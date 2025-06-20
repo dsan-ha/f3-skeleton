@@ -3,7 +3,7 @@ define('SITE_ROOT',dirname(__DIR__).'/');
 require_once SITE_ROOT . '/lib/vendor/autoload.php';
 $f3 = \App\F3::instance();
 // Load configuration
-$f3->config('lib/data/config.ini');
+$f3->config('lib/config.ini');
 require_once(SITE_ROOT . '/lib/data/constants.php');
 
 if ((float)PCRE_VERSION<7.9)

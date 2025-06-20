@@ -18,11 +18,12 @@ class Log
 
     protected ?LogNotifier $notifier = null;
 
-    public function __construct(string $filePath, int $threshold = LogLevel::DEBUG, bool $colorOutput = false, bool $jsonFormat = false)
+    public function __construct(string $filePath, string $logFolder = '', int $threshold = LogLevel::DEBUG, bool $colorOutput = false, bool $jsonFormat = false)
     {
         $f3 = F3::instance();
-        $logFolder = $f3->g('log.log_folder',self::LOG_FOLDER);
-        $this->basePath = SITE_ROOT.self::LOG_FOLDER.$filePath;
+        if(empty($logFolder))
+            $logFolder = $f3->g('log.log_folder',self::LOG_FOLDER);
+        $this->basePath = SITE_ROOT.$logFolder.$filePath;
         $this->threshold = $threshold;
         $this->colorOutput = $colorOutput;
         $this->jsonFormat = $jsonFormat;
@@ -55,10 +56,11 @@ class Log
         }
     }
 
-    public static function writeIn(string $filePath, string $message, int $level = LogLevel::INFO): void
+    public static function writeIn(string $filePath, string $message, int $level = LogLevel::INFO, string $logFolder = ''): void
     {
         $f3 = F3::instance();
-        $logFolder = $f3->g('log.log_folder',self::LOG_FOLDER);
+        if(empty($logFolder))
+            $logFolder = $f3->g('log.log_folder',self::LOG_FOLDER);
         $label = LogLevel::$labels[$level] ?? 'INFO';
         $path = SITE_ROOT.$logFolder.$filePath;
         $jsonFormat = false;

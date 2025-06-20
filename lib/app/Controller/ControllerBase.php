@@ -1,23 +1,28 @@
 <?php
 
-namespace App\Controllers;
+namespace App\Controller;
 
 use App\App;
 use App\F3;
 
-class ControllerBase
+abstract class ControllerBase
 {
 	protected $app, $f3;
 
-    public function __construct()
+    abstract protected function middleware(array $arParams): void;
+    abstract protected function afterRender(array $arParams): void;
+
+    public function __construct(array $arParams = [])
     {
         $this->app = App::instance();
         $this->f3 = F3::instance();
+        $this->middleware($arParams);
     }
 
-	public function render()
+	public function render(array $arParams = [])
     {
-        echo $this->app->render();
+        echo $this->app->render($arParams);
+        $this->afterRender($arParams);
     }
     
 }
