@@ -3,13 +3,19 @@
 namespace App\Utils;
 
 use App\Utils\Cache\CacheInterface;
+use App\Base\Prefab;
+use App\F3;
 
-class Cache extends \Prefab implements CacheInterface 
+class Cache extends Prefab implements CacheInterface
 {
     protected CacheInterface $adapter;
 
-    public function __construct(CacheInterface $adapter)
+    public function __construct()
     {
+        $f3 = F3::instance();
+        $cache_folder = $f3->g('cache.folder','lib/tmp/cache/');
+        $adapter = $f3->get('CACHE_ADAPTER');
+        if(empty($adapter)) throw new \Exception("Cache adapter not found");
         $this->adapter = $adapter;
     }
 

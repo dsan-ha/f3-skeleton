@@ -102,4 +102,38 @@ class Log
 
         echo LogLevel::$colors[$level] . rtrim($line) . LogLevel::COLOR_RESET . PHP_EOL;
     }
+
+    public static function getLastLines($filePath, $lines = 10) {
+        if (!file_exists($filePath)) {
+            return "Файл не найден";
+        }
+        $file = fopen($filePath, 'r');
+        fseek($file, 0, SEEK_END);
+        
+        $position = ftell($file);
+        $currentLine = 0;
+        $result = [];
+        
+        // Читаем файл с конца
+        while ($currentLine < $lines && $position >= 0) {
+            fseek($file, $position);
+            $char = fgetc($file);
+            
+            if ($char === "\n") {
+                if ($position !== ftell($file)) { // Исключаем дублирование последней строки
+                    $currentLine++;
+                }
+            }
+            
+            $position--;
+        }
+        
+        fseek($file, $position + 2);
+        while (!feof($file)) {
+            $result[] = fgets($file);
+        }
+        fclose($file);
+        
+        return $result;
+    }
 }

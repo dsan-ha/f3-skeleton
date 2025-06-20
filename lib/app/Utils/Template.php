@@ -3,6 +3,7 @@
 namespace App\Utils;
 
 use App\F3;
+use App\Base\Prefab;
 use View;
 
 /**
@@ -10,7 +11,7 @@ use View;
  * Расширение F3 View с поддержкой параметров по аналогии с Bitrix.
  * Определение директорий шаблонов происходит через Hive-переменную UI, как в самой F3.
  */
-class Template extends \Prefab
+class Template extends Prefab
 {
     /** @var array Глобальные параметры шаблона */
     protected array $params = [];

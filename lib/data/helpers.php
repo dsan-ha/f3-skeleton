@@ -3,7 +3,6 @@
 /**
  * f3_cache - для вызова кэша
 **/
-use App\Utils\Cache\FileCacheAdapter;
 
 function f3(){
     return \App\F3::instance();
@@ -20,11 +19,6 @@ function app_component(string $componentName, string $componentTemplate, array $
 function ds(){
     return \App\DS::instance();
 }
-$f3 = f3();
-//Инициализирую кэш, чтоб быстро к нему обращаться
-$cache_folder = $f3->g('cache.folder','lib/tmp/cache/');
-$adapter = new FileCacheAdapter($cache_folder);
-App\Utils\Cache::instance($adapter);
 function f3_cache(){
     return App\Utils\Cache::instance(); //Если не инициализирован кэш то выдаст ошибку
 }

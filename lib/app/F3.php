@@ -2,6 +2,8 @@
 
 namespace App;
 
+use App\Base\Prefab;
+
 class F3
 {
     /**
@@ -56,7 +58,8 @@ class F3
     public static function instance()
     {
         if (!self::$instance) {
-            self::$instance = new self();
+            $class = static::class;
+            self::$instance = \App\Base\ServiceLocator::get($class);
             self::init_f3();
         }
         return self::$instance;

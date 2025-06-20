@@ -4,10 +4,11 @@ namespace App;
 use App\Utils\Assets;   
 use App\F3;
 use App\Component\ComponentManager;
+use App\Base\Prefab;
 /**
  * 
  */
-final class App extends \Prefab
+final class App extends Prefab
 {
 	private $f3; 
 	private $meta; 

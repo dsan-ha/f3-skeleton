@@ -1,7 +1,8 @@
 {
     "require": {
         "bcosca/fatfree": "^3.9",
-        "peppeocchi/php-cron-scheduler": "^4.0"
+        "peppeocchi/php-cron-scheduler": "^4.0",
+        "php-di/php-di": "^7.0"
     },
     "require-dev": {
         "robmorgan/phinx": "^0.16.8"

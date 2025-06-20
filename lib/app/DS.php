@@ -1,8 +1,9 @@
 <?php
 
 namespace App;
+use App\Base\Prefab;
 
-class DS extends \Prefab
+class DS extends Prefab
 {
     //debug
     function v($data){
