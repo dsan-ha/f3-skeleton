@@ -78,7 +78,8 @@ final class App extends Prefab
 		if(is_array($content) && isset($content[$val])){
 			return $content[$val];
 		} else {
-			throw new Exception('<span class="color:red;font-weight:bold;">Content nofound: '.$val.'</span>', 1);
+			$this->f3->set('block_not_found',$val);
+			return 'include/block404.php';
 		}
 	}
 

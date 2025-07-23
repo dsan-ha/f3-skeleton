@@ -4,6 +4,7 @@ namespace App\Service;
 use App\F3;
 use DB\SQL;
 use DB\SQL\Mapper;
+use App\Service\DataManagerProtector;
 
 /**
  * Абстрактный класс для работы с таблицами через SQL или Mapper (Fat-Free Framework).
@@ -17,6 +18,7 @@ abstract class DataManager {
     protected SQL $db;
     protected F3 $f3;
     protected Mapper $mapper;
+    protected DataManagerProtector $protector;
 
     /**
      * @param SQL $db экземпляр базы данных
@@ -25,6 +27,7 @@ abstract class DataManager {
     public function __construct(SQL $db, F3 $f3) {
         $this->db = $db;
         $this->f3 = $f3;
+        $this->protector = DataManagerProtector::instance();
         $this->mapper = new Mapper($db, static::getTableName());
     }
 
@@ -121,6 +124,7 @@ abstract class DataManager {
      * @return array[]
      */
     public function getRaw(string $sql, array $params = []): array {
+        $this->protector->assertReadOnlyQuery($sql);
         return $this->db->exec($sql, $params);
     }
 
@@ -180,6 +184,7 @@ abstract class DataManager {
      * @return string
      */
     protected function buildSelect(array $fields = ['*'], string $alias = ''): string {
+        $this->protector->assertSafeIdentifiers($fields);
         $fieldList = implode(', ', $fields);
         $prefix = $this->f3->get('DB.prefix') ?: '';
         $table = static::getTableName();
@@ -193,7 +198,9 @@ abstract class DataManager {
      * @return string
      */
     protected function buildJoins(array $joins): string {
+        if(empty($joins)) return '';
         $sql = '';
+        $this->protector->assertSafeJoins($joins);
         foreach ($joins as $join) {
             $type = strtoupper($join['type'] ?? 'INNER');
             $table = $join['table'];
@@ -271,7 +278,9 @@ abstract class DataManager {
      * @return string
      */
     protected function buildGroup(array $group): string {
-        return $group ? ' GROUP BY ' . implode(', ', $group) : '';
+        if (empty($group)) return '';
+        $this->protector->assertSafeGroup($group);
+        return ' GROUP BY ' . implode(', ', $group);
     }
     
     /**
@@ -318,6 +327,7 @@ abstract class DataManager {
      */
     protected function buildOrder(array $order): string {
         if (empty($order)) return '';
+        $this->protector->assertSafeOrder($order);
         $clauses = [];
         foreach ($order as $field => $dir) {
             $clauses[] = "$field $dir";

@@ -8,17 +8,19 @@ use App\Utils\Template;
 
 abstract class ControllerBase
 {
-    protected $app, $f3, $template;
+    protected App $app, F3 $f3, Template $template;
 
-    abstract protected function middleware(array $arParams): void;
+    abstract protected function middleware(): void;
     abstract protected function afterRender(array $arParams): void;
+    abstract protected function initController():: void;
 
     public function __construct(array $arParams = [])
     {
         $this->f3 = F3::instance();
         $this->template = Template::instance();
         $this->app = App::instance();
-        $this->middleware($arParams);
+        $this->initController();
+        $this->middleware();
     }
 
     public function render(array $arParams = [])
