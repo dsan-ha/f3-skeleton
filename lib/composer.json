@@ -8,6 +8,11 @@
         "robmorgan/phinx": "^0.16.8"
     },
 	"autoload": {
-	    "psr-4": { "App\\": "app/" }
+	    "psr-4": { 
+            "App\\": [
+                "../local/app/",
+                "./app/"
+            ] 
+        }
 	}
 }
