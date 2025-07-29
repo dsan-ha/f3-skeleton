@@ -2,54 +2,25 @@
 
 namespace App\Service;
 
-use \App\F3;
-use \DB\SQL;
+use App\F3;
+use App\Base\Prefab;
+use DB\SQL;
 use ReflectionClass;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RegexIterator;
 
-class DataManagerRegistry
+class DataManagerRegistry extends Prefab
 {
-    protected static array $instances = [];
-    protected static SQL $db;
-    protected static F3 $f3;
+    protected array $managers = [];
+    protected SQL $db;
+    protected F3 $f3;
 
-    public static function init(SQL $db, F3 $f3): void
+    public function __construct()
     {
-        self::$db = $db;
-        self::$f3 = $f3;
-        self::loadDataManagers();
-    }
-
-    /**
-     * Автоматически регистрирует все DataManager-классы из App/Service/Data/
-     */
-    protected static function loadDataManagers(): void
-    {
-        $baseDir = __DIR__ . '/Data';
-        $namespace = 'App\\Service\\Data\\';
-
-        $iterator = new RegexIterator(
-            new RecursiveIteratorIterator(new RecursiveDirectoryIterator($baseDir)),
-            '/^.+\\.php$/i',
-            \RecursiveRegexIterator::GET_MATCH
-        );
-
-        foreach ($iterator as $files) {
-
-            foreach ($files as $file) {
-        
-                $relative = substr(str_replace([$baseDir, '.php'], '', $file), 1);
-                $class = $namespace . str_replace('/', '\\', $relative);
-                if (!class_exists($class)) {
-                    require_once $file;
-                }
-                if (is_subclass_of($class, DataManager::class)) {
-                    self::$instances[$class] = new $class(self::$db, self::$f3);
-                }
-            }
-        }
+        $f3 = F3::instance();
+        $this->f3 = $f3;
+        $this->db = $f3->get('DB');
     }
 
     /**
@@ -60,11 +31,14 @@ class DataManagerRegistry
      */
     public static function get(string $className): DataManager
     {
-        if (!isset(self::$instances[$className])) {
-            throw new \RuntimeException("DataManager '" . $className . "' не зарегистрирован. Проверь наличие файла в App/Service/Data.");
+        $dm = DataManagerRegistry::instance();
+        if (!isset($dm->managers[$className])) {
+            $dm->managers[$className] = new $className($dm->db, $dm->f3);
+            if(empty($dm->managers[$className]))
+                throw new \RuntimeException("DataManager '" . $className . "' не зарегистрирован. Проверь наличие файла в App/Service/Data.");
         }
 
-        return self::$instances[$className];
+        return $dm->managers[$className];
     }
 
     /**
@@ -73,6 +47,7 @@ class DataManagerRegistry
      */
     public static function all(): array
     {
-        return self::$instances;
+        $dm = DataManagerRegistry::instance();
+        return $dm->managers;
     }
 }

@@ -28,14 +28,7 @@ class ComponentManager {
         self::checkName($folder,$compName,$template);
         $nameClass = self::componentNameToClass($compName, 'Component');
         $nameFolderClass = self::componentNameToClass($folder);
-        $classFile = __DIR__ . '/' . $nameFolderClass . '/' . $nameClass . '.php'; 
         $templateFolder = $this->uiDir . $folder . '/' . $compName . '/' .  $template . '/';
-
-        if (!is_file($classFile)) {
-            throw new \RuntimeException("Component logic '$name' not found.");
-        }
-
-        require_once $classFile;
 
         $className = '\\App\\Component\\' . $nameFolderClass . '\\' . $nameClass; 
 
