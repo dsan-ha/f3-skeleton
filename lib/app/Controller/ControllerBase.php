@@ -8,7 +8,9 @@ use App\Utils\Template;
 
 abstract class ControllerBase
 {
-    protected App $app, F3 $f3, Template $template;
+    protected App $ap; 
+    protected F3 $f3;
+    protected Template $template;
 
     abstract protected function middleware(): void;
     abstract protected function afterRender(array $arParams): void;
