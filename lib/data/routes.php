@@ -1,9 +1,4 @@
 <?php if(!defined('SITE_ROOT')) exit();
-$f3=App\F3::instance();
 
-$f3->route('GET /',
-	function($_) {
-		app()->setContent('body','pages/index.php');
-		app()->render();
-	}
-);
+$routes_file = SITE_ROOT . 'local/data/routes.php';
+if(is_file($routes_file)) require_once($routes_file);

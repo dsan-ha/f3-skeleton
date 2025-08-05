@@ -22,18 +22,6 @@ class F3
     protected static $middlewareErrors = [];
 
     /**
-     * Возвращает ядро F3
-     * @return Base
-     */
-    protected static function fw()
-    {
-        if (!self::$fw) {
-            self::$fw = \Base::instance();
-        }
-        return self::$fw;
-    }
-
-    /**
      * Статический вызов
      */
     public static function __callStatic($method, $args)
@@ -42,7 +30,7 @@ class F3
             return forward_static_call_array([__CLASS__, $method], $args);
         }
 
-        $fw = self::fw();
+        $fw = self::$fw;
 
         if (method_exists($fw, $method)) {
             return call_user_func_array([$fw, $method], $args);
@@ -71,7 +59,8 @@ class F3
      */
     public static function init_f3()
     {
-        self::fw()->set('MIDDLEWARE', []);
+        self::$fw = \Base::instance();
+        self::$fw->set('MIDDLEWARE', []);
         self::$middlewareErrors = [];
     }
 
@@ -84,7 +73,7 @@ class F3
             return call_user_func_array([$this, $method], $args);
         }
 
-        $fw = self::fw();
+        $fw = self::$fw;
 
         if (method_exists($fw, $method)) {
             return call_user_func_array([$fw, $method], $args);
@@ -94,13 +83,26 @@ class F3
     }
 
     /**
+     * 
+     */
+    public function run()
+    {
+        $fw = self::$fw;
+        if ($this->middleware()) {
+            $fw->run();
+        } else {
+            $this->middlewareError();
+        }
+    }
+
+    /**
      * Добавляет middleware
      * @param callable $handler
      * @return void
      */
     public function addMiddleware(callable $handler)
     {
-        $fw = self::fw();
+        $fw = self::$fw;
         $middleware = $fw->get('MIDDLEWARE');
         $middleware[] = $handler;
         $fw->set('MIDDLEWARE', $middleware);
@@ -112,7 +114,7 @@ class F3
      */
     public function middleware()
     {
-        $fw = self::fw();
+        $fw = self::$fw;
         $middleware = $fw->get('MIDDLEWARE');
 
         foreach ($middleware as $index => $handler) {
@@ -142,7 +144,7 @@ class F3
     **/
     public function middlewareError()
     {
-        $fw = self::fw();
+        $fw = self::$fw;
         $textError = 'Middleware Error';
         if ($fw->get('DEBUG') >= 1) {
             $textError = implode("<br>", self::$middlewareErrors);
@@ -181,7 +183,7 @@ class F3
     **/
     public function g($key, $def = null)
     {
-        $fw = self::fw();
+        $fw = self::$fw;
         $val = $fw->ref($key, false);
         if (is_null($val)) {
             if (!is_null($def)) {
