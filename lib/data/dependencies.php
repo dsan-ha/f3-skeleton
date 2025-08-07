@@ -3,35 +3,22 @@ use App\Service;
 use App\Utils\Cache\FileCacheAdapter;
 use App\Base\ServiceLocator;
 use DI\ContainerBuilder;
-use function DI\autowire;
-use function DI\create;
-use function DI\get;
 
 $f3 = App\F3::instance();
-
-//Инициализирую кэш, чтоб быстро к нему обращаться
-$cache_folder = $f3->g('cache.folder','lib/tmp/cache/');
-$adapter = new FileCacheAdapter($cache_folder);
-$f3->set('CACHE_ADAPTER',$adapter);
+$f3->set('DB', null);
 
 $builder = new ContainerBuilder();
 
-// Определения зависимостей
-$builder->addDefinitions([
-    App\F3::class => autowire(App\F3::class),
-    // App\Utils\Assets::instance()
-    App\Utils\Assets::class => autowire(App\Utils\Assets::class),
-    // template()->render()
-    App\Utils\Template::class => autowire(App\Utils\Template::class),
-    // f3_cache()
-    App\Utils\Cache::class => create()->constructor($adapter),
-    // app()
-    App\App::class => autowire(App\App::class)
-]);
+// Загружаем все определения
+$definitions = [];
 
-// Сохраняем контейнер
+foreach (['lib/data/.definitions.php', 'local/data/.definitions.php'] as $file) {
+    $full_path = SITE_ROOT.$file;
+    if (file_exists($full_path)) {
+        $defs = require $full_path;
+        $definitions = array_merge($definitions, $defs);
+    }
+}
+
+$builder->addDefinitions($definitions);
 ServiceLocator::setContainer($builder->build());
-
-$f3->set('DB', null);
-
-

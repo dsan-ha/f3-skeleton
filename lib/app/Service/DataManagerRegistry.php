@@ -16,11 +16,10 @@ class DataManagerRegistry extends Prefab
     protected SQL $db;
     protected F3 $f3;
 
-    public function __construct()
+    public function __construct(SQL $db, F3 $f3)
     {
-        $f3 = F3::instance();
+        $this->db = $db;
         $this->f3 = $f3;
-        $this->db = $f3->get('DB');
     }
 
     /**
@@ -29,25 +28,21 @@ class DataManagerRegistry extends Prefab
      * @param class-string<T> $className
      * @return T
      */
-    public static function get(string $className): DataManager
+    public function get(string $className): DataManager
     {
-        $dm = DataManagerRegistry::instance();
-        if (!isset($dm->managers[$className])) {
-            $dm->managers[$className] = new $className($dm->db, $dm->f3);
-            if(empty($dm->managers[$className]))
-                throw new \RuntimeException("DataManager '" . $className . "' не зарегистрирован. Проверь наличие файла в App/Service/Data.");
+        if (!isset($this->managers[$className])) {
+            $this->managers[$className] = new $className($this->db, $this->f3);
         }
 
-        return $dm->managers[$className];
+        return $this->managers[$className];
     }
 
     /**
      * Получить все зарегистрированные DataManager-ы
      * @return array<string, DataManager>
      */
-    public static function all(): array
+    public function all(): array
     {
-        $dm = DataManagerRegistry::instance();
         return $dm->managers;
     }
 }
