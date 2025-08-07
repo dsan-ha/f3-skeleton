@@ -16,6 +16,10 @@ class ServiceLocator {
         return self::$container;
     }
 
+    public static function setContainer(Container $container): void {
+        self::$container = $container;
+    }
+
     public static function get(string $id): mixed {
         return self::getContainer()->get($id);
     }

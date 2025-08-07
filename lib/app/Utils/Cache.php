@@ -10,11 +10,8 @@ class Cache extends Prefab implements CacheInterface
 {
     protected CacheInterface $adapter;
 
-    public function __construct()
+    public function __construct(CacheInterface $adapter)
     {
-        $f3 = F3::instance();
-        $cache_folder = $f3->g('cache.folder','lib/tmp/cache/');
-        $adapter = $f3->get('CACHE_ADAPTER');
         if(empty($adapter)) throw new \Exception("Cache adapter not found");
         $this->adapter = $adapter;
     }

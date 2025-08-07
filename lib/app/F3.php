@@ -3,6 +3,8 @@
 namespace App;
 
 use App\Base\Prefab;
+use App\Utils\Scheduler;
+
 
 class F3
 {
@@ -159,7 +161,7 @@ class F3
     **/
     public function schedule(callable $callback, string $expression = '* * * * *'): void
     {
-        $scheduler = $this->g('Scheduler',new TaskScheduler());
+        $scheduler = $this->g('Scheduler',new Scheduler());
         $scheduler->add($callback, $expression);
     }
 
