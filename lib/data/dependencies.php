@@ -4,7 +4,7 @@ use App\Utils\Cache\FileCacheAdapter;
 use App\Base\ServiceLocator;
 use DI\ContainerBuilder;
 
-$f3 = App\F3::instance();
+$f3 = App\F4::instance();
 $f3->set('DB', null);
 
 $builder = new ContainerBuilder();

@@ -2,7 +2,7 @@
 
 namespace App\Utils;
 
-use App\F3;
+use App\F4;
 use App\Utils\Log\LogLevel;
 use App\Utils\Log\LogNotifier;
 use App\Utils\Log\LogRotator;
@@ -20,7 +20,7 @@ class Log
 
     public function __construct(string $filePath, string $logFolder = '', int $threshold = LogLevel::DEBUG, bool $colorOutput = false, bool $jsonFormat = false)
     {
-        $f3 = F3::instance();
+        $f3 = F4::instance();
         if(empty($logFolder))
             $logFolder = $f3->g('log.log_folder',self::LOG_FOLDER);
         $this->basePath = SITE_ROOT.$logFolder.$filePath;
@@ -31,7 +31,7 @@ class Log
 
     public function write(string $message, int $level = LogLevel::INFO): void
     {
-        $f3 = F3::instance();
+        $f3 = F4::instance();
         if ($level < $this->threshold) {
             return;
         }
@@ -58,7 +58,7 @@ class Log
 
     public static function writeIn(string $filePath, string $message, int $level = LogLevel::INFO, string $logFolder = ''): void
     {
-        $f3 = F3::instance();
+        $f3 = F4::instance();
         if(empty($logFolder))
             $logFolder = $f3->g('log.log_folder',self::LOG_FOLDER);
         $label = LogLevel::$labels[$level] ?? 'INFO';

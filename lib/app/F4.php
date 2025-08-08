@@ -2,11 +2,10 @@
 
 namespace App;
 
-use App\Base\Prefab;
 use App\Utils\Scheduler;
 
 
-class F3
+class F4
 {
     /**
      * @var Base|null
@@ -14,7 +13,7 @@ class F3
     protected static $fw = null;
 
     /**
-     * @var F3|null — синглтон-обёртка
+     * @var F4|null — синглтон-обёртка
      */
     protected static $instance = null;
 
@@ -42,14 +41,13 @@ class F3
     }
 
     /**
-     * Возвращает инстанс F3-обёртки (синглтон)
-     * @return F3
+     * Возвращает инстанс F4-обёртки (синглтон)
+     * @return F4
      */
     public static function instance()
     {
         if (!self::$instance) {
-            $class = static::class;
-            self::$instance = \App\Base\ServiceLocator::get($class);
+            self::$instance = \App\Base\ServiceLocator::get(static::class);
             self::init_f3();
         }
         return self::$instance;
@@ -57,7 +55,7 @@ class F3
 
     /**
      * Инит обёртки
-     * @return F3
+     * @return F4
      */
     public static function init_f3()
     {

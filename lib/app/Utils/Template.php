@@ -2,38 +2,42 @@
 
 namespace App\Utils;
 
-use App\F3;
-use App\Base\Prefab;
+use App\F4;
 use View;
 
 /**
  * Class Template
- * Расширение F3 View с поддержкой параметров по аналогии с Bitrix.
- * Определение директорий шаблонов происходит через Hive-переменную UI, как в самой F3.
+ * Расширение F4 View с поддержкой параметров по аналогии с Bitrix.
+ * Определение директорий шаблонов происходит через Hive-переменную UI, как в самой F4.
  */
-class Template extends Prefab
+class Template
 {
     /** @var array Глобальные параметры шаблона */
     protected array $params = [];
-    protected F3 $f3;
+    protected F4 $f3;
     protected array $trigger = [];
     protected int $level = 0;
     protected array $stack = [];
+    protected string $uiPaths = '';
 
     /**
      * Конструктор.
-     * @param string|string[]|null $uiPaths Путь или массив путей к папке(ам) шаблонов. Как в F3, разделитель — запятая.
+     * @param string|string[]|null $uiPaths Путь или массив путей к папке(ам) шаблонов. Как в F4, разделитель — запятая.
      */
-    public function __construct(string|array $uiPaths = null)
+    public function __construct(F4 $f3, string|array $uiPaths = null)
     {
-        $this->f3 = F3::instance();
+        $this->f3 = $f3;
         if ($uiPaths !== null) {
             // Приводим к массиву
             $paths = is_array($uiPaths) ? $uiPaths : [$uiPaths];
             // Нормализуем пути и объединяем
             $normalized = array_map(fn($p) => rtrim($p, '/\\') . '/', $paths);
-            $this->f3->set('UI', implode(',', $normalized));
+            $uiPaths = implode(',', $normalized);
+        } else {
+            $uiPaths = $f3->get('UI');
         }
+        if(empty($uiPaths)) throw new \Exception("Not found path UI.");
+        $this->uiPaths = $uiPaths;
     }
 
     /**
@@ -116,7 +120,7 @@ class Template extends Prefab
      */
     protected function resolveTemplatePath(string $template): string
     {
-        $hive = $this->f3->get('UI');
+        $hive = $this->uiPaths;
         $roots = $hive ? explode(',', $hive) : [];
 
         foreach ($roots as $root) {
@@ -139,7 +143,7 @@ class Template extends Prefab
     {
         $fw = $this->f3;
         $real = realpath($file);
-        $uiRoot = realpath($fw->get('UI'));
+        $uiRoot = realpath($this->uiPaths);
         if ($real === false || $uiRoot === false || !str_starts_with($real, $uiRoot)) {
             throw new \RuntimeException("Invalid template path: {$file}");
         }

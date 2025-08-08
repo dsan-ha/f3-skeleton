@@ -2,7 +2,8 @@
     "require": {
         "bcosca/fatfree": "^3.9",
         "peppeocchi/php-cron-scheduler": "^4.0",
-        "php-di/php-di": "^7.0"
+        "php-di/php-di": "^7.0",
+        "symfony/yaml": "^7.3"
     },
     "require-dev": {
         "robmorgan/phinx": "^0.16.8"

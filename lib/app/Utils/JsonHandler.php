@@ -2,7 +2,7 @@
 
 namespace App\Utils;
 
-use App\F3;
+use App\F4;
 use App\Utils\Log;
 use App\Utils\Log\LogLevel;
 
@@ -57,7 +57,7 @@ class JsonHandler
         try {
             return self::decode($raw, $assoc, $depth, $options);
         } catch (JsonException $e) {
-            $f3 = F3::instance();
+            $f3 = F4::instance();
             $log = $f3->get('log.json_on');
             if($log)
                 self::logSuspiciousPayload($raw, $e->getMessage());
@@ -217,7 +217,7 @@ class JsonHandler
      */
     private static function logSuspiciousPayload(string $raw, string $reason): void
     {
-        $f3 = F3::instance();
+        $f3 = F4::instance();
         $logFile = $f3->get('log.json_log');
         if (!$logFile) return;
         $logFile = SITE_ROOT . $logFile;

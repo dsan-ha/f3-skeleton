@@ -2,9 +2,7 @@
 
 namespace App\Utils;
 
-use App\Base\Prefab;
-
-class Assets extends Prefab
+class Assets
 {
     private $cssFiles = [];
     private $jsFiles = [];

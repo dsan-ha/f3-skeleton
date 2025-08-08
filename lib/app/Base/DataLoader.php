@@ -1,7 +1,7 @@
 <?php
 namespace App\Base;
 
-use App\F3;
+use App\F4;
 use Symfony\Component\Yaml\Yaml;           // YAML-парсер из composer
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;

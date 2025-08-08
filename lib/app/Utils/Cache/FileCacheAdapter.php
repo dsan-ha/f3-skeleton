@@ -2,7 +2,7 @@
 
 namespace App\Utils\Cache;
 
-use App\F3;
+use App\F4;
 
 class FileCacheAdapter implements CacheInterface
 {
@@ -13,7 +13,7 @@ class FileCacheAdapter implements CacheInterface
         if($baseDir){
             $this->baseDir = rtrim($baseDir) . '/';
         } else {
-            $this->baseDir = SITE_ROOT.rtrim(F3::instance()->g('cache.folder','lib/tmp/cache/'));
+            $this->baseDir = SITE_ROOT.rtrim(F4::instance()->g('cache.folder','lib/tmp/cache/'));
         }
     }
 

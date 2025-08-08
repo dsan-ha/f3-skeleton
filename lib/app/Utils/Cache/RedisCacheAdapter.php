@@ -2,7 +2,7 @@
 
 namespace App\Utils\Cache;
 
-use App\F3;
+use App\F4;
 
 class RedisCacheAdapter implements CacheInterface
 {
@@ -10,7 +10,7 @@ class RedisCacheAdapter implements CacheInterface
 
     public function __construct()
     {
-        $f3 = F3::instance();
+        $f3 = F4::instance();
         $host = $f3->g('cache.redis_host','127.0.0.1');
         $port = $f3->g('cache.redis_port',6379);
         $db = $f3->g('cache.redis_db',0);

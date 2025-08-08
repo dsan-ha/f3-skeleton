@@ -2,7 +2,7 @@
 
 namespace App\Utils\Log;
 
-use App\F3;
+use App\F4;
 
 class LogRotator
 {
@@ -13,7 +13,7 @@ class LogRotator
 
     public static function rotateFile(string $file = null): void
     {
-        $f3 = F3::instance();
+        $f3 = F4::instance();
         $maxFileSizeBytes = $f3->g('log_rotate.max_file_size_bytes',self::FILE_SIZE);
         $last = $f3->g('log_rotate.max_rotated_files',self::ROTATED_FILES);
         $compressOld = $f3->g('log_rotate.compress_old',self::COMPRESS_OLD);
@@ -49,7 +49,7 @@ class LogRotator
 
     public static function rotateDirectory(string $dir = null): void
     {
-        $f3 = F3::instance();
+        $f3 = F4::instance();
         if(empty($dir))
             $dir = SITE_ROOT . $f3->g('log.log_folder',self::LOG_FOLDER);
         foreach (glob($dir . '/*.log') as $file) {

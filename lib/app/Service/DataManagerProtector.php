@@ -2,13 +2,12 @@
 namespace App\Service;
 
 use InvalidArgumentException;
-use App\Base\Prefab;
 
 /**
  * Класс-"щит" для защиты DataManager от SQL-инъекций и других угроз.
  * Используется как вспомогательный компонент в методах DataManager.
  */
-class DataManagerProtector extends Prefab
+class DataManagerProtector
 {
     /**
      * Разрешённые символы для алиасов, имён полей и таблиц

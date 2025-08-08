@@ -2,23 +2,24 @@
 namespace App;
 
 use App\Utils\Assets;   
-use App\F3;
+use App\F4;
 use App\Component\ComponentManager;
-use App\Base\Prefab;
 /**
  * 
  */
-final class App extends Prefab
+final class App
 {
-	private $f3; 
+	private F4 $f3; 
+	private Assets $assets;
 	private $meta; 
-	public $component; 
+	public ComponentManager $component; 
 	private $layout = 'layout.php';
 	const BUFFER = ['head' => '{{__headBufferf3}}', 'footer' => '{{__footerBufferf3}}'];
 	
-	function __construct()
+	function __construct(F4 $f3, Assets $assets, ComponentManager $component)
 	{
-		$this->f3 = F3::instance();
+		$this->f3 = $f3;
+		$this->assets = $assets;
 		$this->component = new ComponentManager($this->f3);
 		$this->setDefault();
 	}
@@ -59,8 +60,8 @@ final class App extends Prefab
 	public function renderBuffer($html, $file){
 		$headHtml = '';
 		$footerHtml = '';
-		$headHtml .= Assets::instance()->renderCss();
-		$headHtml .= Assets::instance()->renderJs();
+		$headHtml .= $this->assets->renderCss();
+		$headHtml .= $this->assets->renderJs();
 		$buffer = [];
 		$buffer[] = '/'.self::BUFFER['head'].'/';
 		$buffer[] = '/'.self::BUFFER['footer'].'/';

@@ -2,17 +2,17 @@
 
 namespace App\Component;
 
-use App\F3;
+use App\F4;
 
 class ComponentManager {
-    protected F3 $f3;
+    protected F4 $f3;
     protected string $componentDir;
     protected string $uiDir;
 
-    public function __construct(F3 $f3, string $uiDir = 'components/')
+    public function __construct(F4 $f3)
     {
         $this->f3 = $f3;
-        $this->uiDir = trim($uiDir, '/') . '/';
+        $this->uiDir = 'components/';
     }
 
     public function run(string $name, string $template = '.default', array $params = []): string

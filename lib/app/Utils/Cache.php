@@ -3,10 +3,9 @@
 namespace App\Utils;
 
 use App\Utils\Cache\CacheInterface;
-use App\Base\Prefab;
-use App\F3;
+use App\F4;
 
-class Cache extends Prefab implements CacheInterface
+class Cache implements CacheInterface
 {
     protected CacheInterface $adapter;
 

@@ -1,5 +1,5 @@
 <?php if(!defined('SITE_ROOT')) exit();
-$f3 = \App\F3::instance();
+$f3 = \App\F4::instance();
 
 $f3->schedule(function () {
     // Очистка бана

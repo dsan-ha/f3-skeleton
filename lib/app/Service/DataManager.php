@@ -1,9 +1,10 @@
 <?php
 namespace App\Service;
 
-use App\F3;
+use App\F4;
 use DB\SQL;
 use DB\SQL\Mapper;
+use App\Base\ServiceLocator;
 use App\Service\DataManagerProtector;
 
 /**
@@ -16,18 +17,18 @@ use App\Service\DataManagerProtector;
  */
 abstract class DataManager {
     protected SQL $db;
-    protected F3 $f3;
+    protected F4 $f3;
     protected Mapper $mapper;
     protected DataManagerProtector $protector;
 
     /**
      * @param SQL $db экземпляр базы данных
-     * @param F3 $f3 экземпляр фреймворка
+     * @param F4 $f3 экземпляр фреймворка
      */
-    public function __construct(SQL $db, F3 $f3) {
+    public function __construct(SQL $db, F4 $f3) {
         $this->db = $db;
         $this->f3 = $f3;
-        $this->protector = DataManagerProtector::instance();
+        $this->protector = ServiceLocator::get(DataManagerProtector::class);
         $this->mapper = new Mapper($db, static::getTableName());
     }
 

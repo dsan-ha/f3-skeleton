@@ -3,18 +3,18 @@
 
 namespace App\Component;
 
-use App\F3;
+use App\F4;
 use App\Utils\Assets;
 use Template;
 
 abstract class BaseComponent {
-    protected F3 $f3;
+    protected F4 $f3;
     protected string $folder;
     protected string $templateName;
     protected array $arParams = [];
     protected array $arResult = [];
 
-    public function __construct(F3 $f3, string $templateName, string $folder, array $arParams = [])
+    public function __construct(F4 $f3, string $templateName, string $folder, array $arParams = [])
     {
         $this->f3 = $f3;
         $this->templateName = $templateName;

@@ -2,7 +2,7 @@
 
 namespace App\Utils\Log;
 
-use App\F3;
+use App\F4;
 
 //Класс оповещает об ошибках в slack и телеграмм бота
 class LogNotifier
@@ -14,7 +14,7 @@ class LogNotifier
             return;
         }
 
-        $f3 = F3::instance();
+        $f3 = F4::instance();
         $telegramToken = $f3->g('log_notifier.bot_token',null);
         $telegramChatId = $f3->g('log_notifier.chat_id',null);
         $slackWebhookUrl = $f3->g('log_notifier.slack_webhook_url',null);

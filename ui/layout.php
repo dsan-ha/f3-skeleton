@@ -2,9 +2,9 @@
 
 use App\Utils\Assets;
 
-$f3 = App\F3::instance();
-$app = App\App::instance();
-$assets = Assets::instance();
+$f3 = App\F4::instance();
+$app = app();
+$assets = assets();
 $assets->addCss('/ui/css/normalize.min.css');
 $assets->addCss('/ui/css/fontawesome.min.css');
 $assets->addCss('/ui/css/pure.css');
