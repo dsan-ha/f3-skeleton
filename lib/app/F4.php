@@ -3,6 +3,8 @@
 namespace App;
 
 use App\Utils\Scheduler;
+use Symfony\Component\Yaml\Yaml;
+use Symfony\Component\Yaml\Exception\ParseException;
 
 
 class F4
@@ -46,9 +48,10 @@ class F4
      */
     public static function instance()
     {
-        if (!self::$instance) {
-            self::$instance = \App\Base\ServiceLocator::get(static::class);
-            self::init_f3();
+        if (self::$instance === null) {
+            $f3 = new self();
+            self::$instance = $f3;
+            $f3::init_f3();
         }
         return self::$instance;
     }
@@ -92,6 +95,52 @@ class F4
             $fw->run();
         } else {
             $this->middlewareError();
+        }
+    }
+
+    /**
+     * Load config from YAML or delegate to Base::config()
+     */
+    public static function config(string $file): void
+    {
+        $fw = self::$fw;
+        
+        if (!file_exists($file)) {
+            $fw->error(500, "Config file not found: $file");
+        }
+
+        $ext = pathinfo($file, PATHINFO_EXTENSION);
+
+        switch (strtolower($ext)) {
+            case 'yaml':
+            case 'yml':
+                try {
+                    $config = Yaml::parseFile($file);
+                    if (!is_array($config)) {
+                        throw new \UnexpectedValueException("Invalid YAML config format: $file");
+                    }
+
+                    foreach ($config as $key => $val) {
+                        // Совместимо с set() и mset()
+                        if (is_array($val)) {
+                            $fw->mset($val, $key . '.'); // вложенные ключи
+                        } else {
+                            $fw->set($key, $val);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    $fw->error(500, "YAML parse error: " . $e->getMessage());
+                }
+                break;
+
+            case 'php':
+            case 'ini':
+                // Делегировать в оригинальный Base::config()
+                $fw->config($file);
+                break;
+
+            default:
+                $fw->error(500, "Unsupported config file extension: $ext");
         }
     }
 
@@ -193,5 +242,23 @@ class F4
             }
         }
         return $val;
+    }
+
+    /**
+    *   json answer
+    *   @return void
+    **/
+    public function json($answer, int $statusCode = 200, array $headers = [], int $jsonOptions = JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR): void
+    {
+        http_response_code($statusCode);
+        header('Content-Type: application/json; charset=utf-8');
+        if(!empty($headers)){
+            foreach ($headers as $h) {
+                header($h);
+            }
+        }
+        
+        echo json_encode($answer, $jsonOptions);
+        exit();
     }
 }

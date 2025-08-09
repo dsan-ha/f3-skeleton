@@ -12,15 +12,15 @@ final class App
 	private F4 $f3; 
 	private Assets $assets;
 	private $meta; 
-	public ComponentManager $component; 
+	public ComponentManager $component_manager; 
 	private $layout = 'layout.php';
 	const BUFFER = ['head' => '{{__headBufferf3}}', 'footer' => '{{__footerBufferf3}}'];
 	
-	function __construct(F4 $f3, Assets $assets, ComponentManager $component)
+	function __construct(F4 $f3, Assets $assets, ComponentManager $component_manager)
 	{
 		$this->f3 = $f3;
 		$this->assets = $assets;
-		$this->component = new ComponentManager($this->f3);
+		$this->component_manager = $component_manager;
 		$this->setDefault();
 	}
 

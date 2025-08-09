@@ -2,23 +2,46 @@
 use App\Service;
 use App\Utils\Cache\FileCacheAdapter;
 use App\Base\ServiceLocator;
+use Symfony\Component\Yaml\Yaml;
 use DI\ContainerBuilder;
 
 $f3 = App\F4::instance();
 $f3->set('DB', null);
 
-$builder = new ContainerBuilder();
+$containerBuilder = new ContainerBuilder();
 
 // Загружаем все определения
 $definitions = [];
 
-foreach (['lib/data/.definitions.php', 'local/data/.definitions.php'] as $file) {
-    $full_path = SITE_ROOT.$file;
-    if (file_exists($full_path)) {
-        $defs = require $full_path;
-        $definitions = array_merge($definitions, $defs);
+$paths = [
+    '/lib/data',   // ядро
+    '/local/data', // локальные переопределения
+];
+
+$files = ['services.yaml', '.definitions.php']; //файлы с зависимостями
+
+foreach ($paths as $dir) {
+    foreach ($files as $fileName) {
+        $fullPath = SITE_ROOT . "{$dir}/{$fileName}";
+        if (!file_exists($fullPath)) {
+            continue;
+        }
+
+        $ext = pathinfo($fullPath, PATHINFO_EXTENSION);
+
+        if ($ext === 'yaml' || $ext === 'yml') {
+            $yaml = Yaml::parseFile($fullPath);
+            if (!empty($yaml['services'])) {
+                $containerBuilder->addDefinitions($yaml['services']);
+            }
+        } elseif ($ext === 'php') {
+            $definitions = require $fullPath;
+            if (is_array($definitions)) {
+                $containerBuilder->addDefinitions($definitions);
+            }
+        }
     }
 }
-
-$builder->addDefinitions($definitions);
-ServiceLocator::setContainer($builder->build());
+$containerBuilder->useAutowiring(true);
+$containerBuilder->addDefinitions($definitions);
+ServiceLocator::setContainer($containerBuilder->build());

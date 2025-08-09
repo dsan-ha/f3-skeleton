@@ -10,7 +10,6 @@ abstract class ControllerBase
 {
     protected App $app; 
     protected F4 $f3;
-    protected Template $template;
 
     abstract protected function middleware(): void;
     abstract protected function afterRender(array $arParams): void;
@@ -20,8 +19,7 @@ abstract class ControllerBase
     {
         $arParams = [];
         $this->f3 = F4::instance();
-        $this->template = Template::instance();
-        $this->app = App::instance();
+        $this->app = app();
         $this->initController();
         $this->middleware();
     }

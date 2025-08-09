@@ -3,7 +3,7 @@
 namespace App\Utils;
 
 use App\F4;
-use View;
+use App\Utils\Cache;
 
 /**
  * Class Template
@@ -15,6 +15,7 @@ class Template
     /** @var array Глобальные параметры шаблона */
     protected array $params = [];
     protected F4 $f3;
+    protected Cache $cache;
     protected array $trigger = [];
     protected int $level = 0;
     protected array $stack = [];
@@ -24,17 +25,15 @@ class Template
      * Конструктор.
      * @param string|string[]|null $uiPaths Путь или массив путей к папке(ам) шаблонов. Как в F4, разделитель — запятая.
      */
-    public function __construct(F4 $f3, string|array $uiPaths = null)
+    public function __construct(F4 $f3, Cache $cache, string|array $uiPaths = null)
     {
         $this->f3 = $f3;
+        $this->cache = $cache;
         if ($uiPaths !== null) {
             // Приводим к массиву
             $paths = is_array($uiPaths) ? $uiPaths : [$uiPaths];
-            // Нормализуем пути и объединяем
             $normalized = array_map(fn($p) => rtrim($p, '/\\') . '/', $paths);
             $uiPaths = implode(',', $normalized);
-        } else {
-            $uiPaths = $f3->get('UI');
         }
         if(empty($uiPaths)) throw new \Exception("Not found path UI.");
         $this->uiPaths = $uiPaths;
@@ -66,7 +65,7 @@ class Template
         $params = $this->params;
         $params['arParams'] = $arParams;
         $fw = $this->f3;
-        $cache = f3_cache();
+        $cache = $this->cache;
         $file = $this->resolveTemplatePath($template);
 
         $hash = $fw->hash($file);
@@ -124,7 +123,7 @@ class Template
         $roots = $hive ? explode(',', $hive) : [];
 
         foreach ($roots as $root) {
-            $file = SITE_ROOT . trim($root, '/\\') . '/' . ltrim($template, '/\\');
+            $file = SITE_ROOT . '/' . trim($root, '/\\') . '/' . ltrim($template, '/\\');
             if (is_file($file)) {
                 return $file;
             } else {
@@ -143,14 +142,25 @@ class Template
     {
         $fw = $this->f3;
         $real = realpath($file);
-        $uiRoot = realpath($this->uiPaths);
-        if ($real === false || $uiRoot === false || !str_starts_with($real, $uiRoot)) {
-            throw new \RuntimeException("Invalid template path: {$file}");
+        $paths = explode(',',$this->uiPaths);
+        $uri_file = substr($file, strlen(SITE_ROOT));
+        $find = false;
+        if($real !== false){
+            foreach ($paths as $key => $path) {
+                $p = SITE_ROOT . '/' . ltrim($path, '/\\');
+                if(str_starts_with($file, $p)){
+                    $find = true;
+                } 
+            }
+        }
+        
+        if (!$find) {
+            throw new \RuntimeException("Invalid template path: {$uri_file}");
         }
 
         // Проверка на рекурсию
         if (in_array($real, $this->stack)) {
-            throw new \RuntimeException("Recursive template inclusion detected: {$file}");
+            throw new \RuntimeException("Recursive template inclusion detected: {$uri_file}");
         }
         $this->stack[] = $real;
 

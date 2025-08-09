@@ -1,5 +1,7 @@
 <?php if(!defined('SITE_ROOT')) exit();
+
 use App\Base\ServiceLocator;
+
 /**
  * f3_cache - для вызова кэша
 **/
@@ -17,7 +19,7 @@ function template(){
     return ServiceLocator::get(\App\Utils\Template::class);
 }
 function app_component(string $componentName, string $componentTemplate, array $arParams = []){
-    return app()->component->run($componentName, $componentTemplate, $arParams);
+    return app()->component_manager->run($componentName, $componentTemplate, $arParams);
 }
 function ds(){
     return ServiceLocator::get(\App\DS::class);

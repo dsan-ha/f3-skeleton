@@ -3,15 +3,19 @@
 namespace App\Component;
 
 use App\F4;
+use App\Base\ServiceLocator;
+use App\Utils\Assets;
 
 class ComponentManager {
     protected F4 $f3;
+    protected Assets $assets;
     protected string $componentDir;
     protected string $uiDir;
 
-    public function __construct(F4 $f3)
+    public function __construct(F4 $f3, Assets $assets)
     {
         $this->f3 = $f3;
+        $this->assets = $assets;
         $this->uiDir = 'components/';
     }
 
@@ -36,10 +40,12 @@ class ComponentManager {
             throw new \RuntimeException("Component class '$className' not defined.");
         }
 
-        $component = new $className($this->f3, $template, $templateFolder, $params);
+        $component = new $className($this->f3, $this->assets, $template, $templateFolder, $params);
         $component->execute();
 
-        return $component->render();
+        $render = $component->render();
+
+        return $render;
     }
 
     protected static function componentNameToClass(string $name, string $after = ''): string {
