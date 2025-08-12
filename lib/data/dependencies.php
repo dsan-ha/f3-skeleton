@@ -5,10 +5,8 @@ use App\Base\ServiceLocator;
 use Symfony\Component\Yaml\Yaml;
 use DI\ContainerBuilder;
 
-$f3 = App\F4::instance();
-$f3->set('DB', null);
-
 $containerBuilder = new ContainerBuilder();
+
 
 // Загружаем все определения
 $definitions = [];
@@ -44,4 +42,20 @@ foreach ($paths as $dir) {
 }
 $containerBuilder->useAutowiring(true);
 $containerBuilder->addDefinitions($definitions);
+
 ServiceLocator::setContainer($containerBuilder->build());
+$f3->set('CONTAINER',function($className, $args = null){
+    if (ServiceLocator::has($className)) {
+        return ServiceLocator::get($className);
+    }
+    
+    if (class_exists($className)) {
+        $ref = new ReflectionClass($className);
+        return $args ? $ref->newInstanceArgs($args) : $ref->newInstance();
+    }
+    
+    throw new Exception("Service {$className} not found");
+});
+
+$router = ServiceLocator::get(App\Http\Router::class);
+$f3->initRouter($router);

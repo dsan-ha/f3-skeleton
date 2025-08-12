@@ -13,7 +13,8 @@ final class Base extends ControllerBase
     
     public function index($_, $params)
     {
-
+        app()->setContent('body','pages/index.php');
+        $this->render();
     }
 
     protected function middleware(): void

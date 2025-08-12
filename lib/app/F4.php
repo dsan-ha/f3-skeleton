@@ -5,10 +5,14 @@ namespace App;
 use App\Utils\Scheduler;
 use Symfony\Component\Yaml\Yaml;
 use Symfony\Component\Yaml\Exception\ParseException;
+use App\Utils\Cache\CacheInterface;
+use App\Base\F3Tools;
 
 
 class F4
 {
+    use F3Tools;
+    protected static $router = null;
     /**
      * @var Base|null
      */
@@ -20,29 +24,6 @@ class F4
     protected static $instance = null;
 
     /**
-     * @var array — Лог ошибок middleware
-     */
-    protected static $middlewareErrors = [];
-
-    /**
-     * Статический вызов
-     */
-    public static function __callStatic($method, $args)
-    {
-        if (method_exists(__CLASS__, $method)) {
-            return forward_static_call_array([__CLASS__, $method], $args);
-        }
-
-        $fw = self::$fw;
-
-        if (method_exists($fw, $method)) {
-            return call_user_func_array([$fw, $method], $args);
-        }
-
-        throw new \BadMethodCallException("Static method $method not found.");
-    }
-
-    /**
      * Возвращает инстанс F4-обёртки (синглтон)
      * @return F4
      */
@@ -51,7 +32,8 @@ class F4
         if (self::$instance === null) {
             $f3 = new self();
             self::$instance = $f3;
-            $f3::init_f3();
+            $f3->bootstrap();
+            //$f3::init_f3();
         }
         return self::$instance;
     }
@@ -63,26 +45,11 @@ class F4
     public static function init_f3()
     {
         self::$fw = \Base::instance();
-        self::$fw->set('MIDDLEWARE', []);
-        self::$middlewareErrors = [];
     }
 
-    /**
-     * Нестатический вызов
-     */
-    public function __call($method, $args)
+    public static function initRouter(&$router)
     {
-        if (method_exists($this, $method)) {
-            return call_user_func_array([$this, $method], $args);
-        }
-
-        $fw = self::$fw;
-
-        if (method_exists($fw, $method)) {
-            return call_user_func_array([$fw, $method], $args);
-        }
-
-        throw new \BadMethodCallException("Method $method not found in instance.");
+        self::$router = $router;
     }
 
     /**
@@ -90,23 +57,36 @@ class F4
      */
     public function run()
     {
-        $fw = self::$fw;
-        if ($this->middleware()) {
-            $fw->run();
+        $router = self::$router ?? throw new \RuntimeException(self::E_Router);
+        if ($router->blacklisted($this->ip()))
+            // Spammer detected
+            $this->error(403);
+        $router->run();
+    }
+
+    public function route($pattern,$handler,$ttl=0,$kbps=0){
+        $router = self::$router ?? throw new \RuntimeException(self::E_Router);
+        if (is_array($pattern)) {
+            foreach ($pattern as $item)
+                $this->route($item,$handler,$ttl,$kbps);
+            return;
         } else {
-            $this->middlewareError();
+            return $router->route($pattern,$handler,$ttl,$kbps);
         }
+    }
+
+    public function reroute($url=NULL,$permanent=FALSE,$die=TRUE) {
+        $router = self::$router ?? throw new \RuntimeException(self::E_Router);
+        $router->reroute($url,$permanent,$die);
     }
 
     /**
      * Load config from YAML or delegate to Base::config()
      */
-    public static function config(string $file): void
-    {
-        $fw = self::$fw;
-        
+    public function config(string $file): void
+    {        
         if (!file_exists($file)) {
-            $fw->error(500, "Config file not found: $file");
+            $this->error(500, "Config file not found: $file");
         }
 
         $ext = pathinfo($file, PATHINFO_EXTENSION);
@@ -123,24 +103,18 @@ class F4
                     foreach ($config as $key => $val) {
                         // Совместимо с set() и mset()
                         if (is_array($val)) {
-                            $fw->mset($val, $key . '.'); // вложенные ключи
+                            $this->mset($val, $key . '.'); // вложенные ключи
                         } else {
-                            $fw->set($key, $val);
+                            $this->set($key, $val);
                         }
                     }
                 } catch (\Exception $e) {
-                    $fw->error(500, "YAML parse error: " . $e->getMessage());
+                    $this->error(500, "YAML parse error: " . $e->getMessage());
                 }
                 break;
 
-            case 'php':
-            case 'ini':
-                // Делегировать в оригинальный Base::config()
-                $fw->config($file);
-                break;
-
             default:
-                $fw->error(500, "Unsupported config file extension: $ext");
+                $this->error(500, "Unsupported config file extension: $ext");
         }
     }
 
@@ -149,57 +123,10 @@ class F4
      * @param callable $handler
      * @return void
      */
-    public function addMiddleware(callable $handler)
+    public function add(callable $handler)
     {
-        $fw = self::$fw;
-        $middleware = $fw->get('MIDDLEWARE');
-        $middleware[] = $handler;
-        $fw->set('MIDDLEWARE', $middleware);
-    }
-
-    /**
-     * Выполняет все зарегистрированные middleware
-     * @return bool Возвращает false если какой-то middleware прервал выполнение
-     */
-    public function middleware()
-    {
-        $fw = self::$fw;
-        $middleware = $fw->get('MIDDLEWARE');
-
-        foreach ($middleware as $index => $handler) {
-            try {
-                $result = call_user_func($handler, $fw);
-                if ($result === false) {
-                    self::$middlewareErrors[] = "Middleware #$index прервал выполнение";
-                    return false;
-                }
-            } catch (\Throwable $e) {
-                self::$middlewareErrors[] = sprintf(
-                    "Middleware #%d ошибка: %s (%s:%d)",
-                    $index,
-                    $e->getMessage(),
-                    $e->getFile(),
-                    $e->getLine()
-                );
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-    *   Retrieve contents of hive key
-    *   @return void
-    **/
-    public function middlewareError()
-    {
-        $fw = self::$fw;
-        $textError = 'Middleware Error';
-        if ($fw->get('DEBUG') >= 1) {
-            $textError = implode("<br>", self::$middlewareErrors);
-        }
-        // Можно выполнить редирект или показать страницу ошибки
-        $fw->error(500, $textError);
+        $router = self::$router ?? throw new \RuntimeException(self::E_Router);
+        $router->addMiddleware($handler);
     }
 
     /**
@@ -232,12 +159,11 @@ class F4
     **/
     public function g($key, $def = null)
     {
-        $fw = self::$fw;
-        $val = $fw->ref($key, false);
+        $val = $this->ref($key, false);
         if (is_null($val)) {
             if (!is_null($def)) {
                 return $def;
-            } elseif (Cache::instance()->exists($this->hash($key).'.var', $data)) {
+            } elseif (is_object($this->cache) && $this->cache->exists($this->hash($key).'.var', $data)) {
                 return $data;
             }
         }

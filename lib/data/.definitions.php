@@ -15,6 +15,7 @@ return [
     App\F4::class => DI\factory(function () {
         return App\F4::instance();
     }),
+    App\Http\Router::class => autowire(App\Http\Router::class),
     // App\Utils\Assets::instance()
     App\Utils\Assets::class => autowire(App\Utils\Assets::class),
     // f3_cache()

@@ -7,7 +7,6 @@ use App\F4;
 use App\Utils\Assets;
 use Symfony\Component\Yaml\Yaml;
 use Symfony\Component\Yaml\Exception\ParseException;
-use Template;
 
 abstract class BaseComponent {
     protected F4 $f3;

@@ -23,4 +23,9 @@ class ServiceLocator {
     public static function get(string $id): mixed {
         return self::getContainer()->get($id);
     }
+
+    public static function has($className): mixed {
+        $continer = self::getContainer();
+        return $continer->has($className);
+    }
 }
