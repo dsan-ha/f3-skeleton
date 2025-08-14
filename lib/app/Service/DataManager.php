@@ -2,8 +2,8 @@
 namespace App\Service;
 
 use App\F4;
-use DB\SQL;
-use DB\SQL\Mapper;
+use App\Base\DB\SQL;
+use App\Base\DB\Mapper;
 use App\Base\ServiceLocator;
 use App\Service\DataManagerProtector;
 

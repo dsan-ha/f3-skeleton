@@ -2,6 +2,11 @@
 
 namespace App\Base;
 
+use App\Base\ServiceLocator;
+use App\Http\Response;
+use App\Http\Request;
+use App\Http\Environment;
+
 trait F3Tools {    
     //@{ HTTP status codes (RFC 2616)
     const
@@ -78,6 +83,7 @@ trait F3Tools {
         E_Routes='No routes specified',
         E_Router='Router not initialized',
         E_Class='Invalid class %s',
+        E_Container='DI container not initialized',
         E_Method='Invalid method %s',
         E_Hive='Invalid hive key %s';
     //@}
@@ -86,8 +92,6 @@ trait F3Tools {
     private
         //! Globals
         $hive,
-        //! Initial settings
-        $init,
         //! Mutex locks
         $locks=[],
         $cache;
@@ -96,6 +100,11 @@ trait F3Tools {
     function initCache($cache)
     {
         $this->cache = $cache;
+    }
+
+    function cache_init()
+    {
+        return is_object($this->cache);
     }
 
     function cache_exists(string $key, &$value = null)
@@ -111,15 +120,6 @@ trait F3Tools {
     function cache_get($cache)
     {
         $this->cache->get($key, self::Cache_folder, $value);
-    }
-
-    /**
-    *   Sync PHP global with corresponding hive key
-    *   @return array
-    *   @param $key string
-    **/
-    function sync($key) {
-        return $this->hive[$key]=&$GLOBALS['_'.$key];
     }
 
     /**
@@ -223,12 +223,7 @@ trait F3Tools {
     function &ref($key,$add=TRUE,&$var=NULL) {
         $null=NULL;
         $parts=$this->cut($key);
-        if ($parts[0]=='SESSION') {
-            if (!headers_sent() && session_status()!=PHP_SESSION_ACTIVE)
-                session_start();
-            $this->sync('SESSION');
-        }
-        elseif (!preg_match('/^\w+$/',$parts[0]))
+        if (!preg_match('/^\w+$/',$parts[0]))
             user_error(sprintf(self::E_Hive,$this->stringify($key)),
                 E_USER_ERROR);
         if (is_null($var)) {
@@ -414,36 +409,22 @@ trait F3Tools {
                 unset($_COOKIE[$parts[1]]);
             }
         }
-        elseif ($parts[0]=='SESSION') {
-            if (!headers_sent() && session_status()!=PHP_SESSION_ACTIVE)
-                session_start();
-            if (empty($parts[1])) {
-                // End session
-                session_unset();
-                session_destroy();
-                $this->clear('COOKIE.'.session_name());
-            }
-            $this->sync('SESSION');
+        
+        $val=preg_replace('/^(\$hive)/','$this->hive',
+            $this->compile('@hive.'.$key, FALSE));
+        if (!$this->isSafeUnsetExpr($val)) {
+            // можно логировать сюда попытку небезопасного выражения
+            return false;
         }
-        if (!isset($parts[1]) && array_key_exists($parts[0],$this->init))
-            // Reset global to default value
-            $this->hive[$parts[0]]=$this->init[$parts[0]];
-        else {
-            $val=preg_replace('/^(\$hive)/','$this->hive',
-                $this->compile('@hive.'.$key, FALSE));
-            if (!$this->isSafeUnsetExpr($val)) {
-                // можно логировать сюда попытку небезопасного выражения
-                return false;
-            }
-            eval('unset('.$val.');');
-            if ($parts[0]=='SESSION') {
-                session_commit();
-                session_start();
-            }
-            if (is_object($cache) && $cache->exists($hash=$this->hash($key).'.var',self::Cache_folder))
-                // Remove from cache
-                $cache->clear($hash,self::Cache_folder);
+        eval('unset('.$val.');');
+        if ($parts[0]=='SESSION') {
+            session_commit();
+            session_start();
         }
+        if (is_object($cache) && $cache->exists($hash=$this->hash($key).'.var',self::Cache_folder))
+            // Remove from cache
+            $cache->clear($hash,self::Cache_folder);
+        
     }
 
     /**
@@ -495,101 +476,6 @@ trait F3Tools {
     **/
     function hive() {
         return $this->hive;
-    }
-
-    /**
-    *   Copy contents of hive variable to another
-    *   @return mixed
-    *   @param $src string
-    *   @param $dst string
-    **/
-    function copy($src,$dst) {
-        $ref=&$this->ref($dst);
-        return $ref=$this->ref($src,FALSE);
-    }
-
-    /**
-    *   Concatenate string to hive string variable
-    *   @return string
-    *   @param $key string
-    *   @param $val string
-    **/
-    function concat($key,$val) {
-        $ref=&$this->ref($key);
-        $ref.=$val;
-        return $ref;
-    }
-
-    /**
-    *   Swap keys and values of hive array variable
-    *   @return array
-    *   @param $key string
-    *   @public
-    **/
-    function flip($key) {
-        $ref=&$this->ref($key);
-        return $ref=array_combine(array_values($ref),array_keys($ref));
-    }
-
-    /**
-    *   Add element to the end of hive array variable
-    *   @return mixed
-    *   @param $key string
-    *   @param $val mixed
-    **/
-    function push($key,$val) {
-        $ref=&$this->ref($key);
-        $ref[]=$val;
-        return $val;
-    }
-
-    /**
-    *   Remove last element of hive array variable
-    *   @return mixed
-    *   @param $key string
-    **/
-    function pop($key) {
-        $ref=&$this->ref($key);
-        return array_pop($ref);
-    }
-
-    /**
-    *   Add element to the beginning of hive array variable
-    *   @return mixed
-    *   @param $key string
-    *   @param $val mixed
-    **/
-    function unshift($key,$val) {
-        $ref=&$this->ref($key);
-        array_unshift($ref,$val);
-        return $val;
-    }
-
-    /**
-    *   Remove first element of hive array variable
-    *   @return mixed
-    *   @param $key string
-    **/
-    function shift($key) {
-        $ref=&$this->ref($key);
-        return array_shift($ref);
-    }
-
-    /**
-    *   Merge array with hive array variable
-    *   @return array
-    *   @param $key string
-    *   @param $src string|array
-    *   @param $keep bool
-    **/
-    function merge($key,$src,$keep=FALSE) {
-        $ref=&$this->ref($key);
-        if (!$ref)
-            $ref=[];
-        $out=array_merge($ref,is_string($src)?$this->hive[$src]:$src);
-        if ($keep)
-            $ref=$out;
-        return $out;
     }
 
     /**
@@ -818,10 +704,21 @@ trait F3Tools {
     *   @return string
     *   @param $code int
     **/
-    function status($code) {
+    function status($code, $res=null, $send = false) {
         $reason=@constant('self::HTTP_'.$code);
-        if (!$this->hive['CLI'] && !headers_sent())
-            header($_SERVER['SERVER_PROTOCOL'].' '.$code.' '.$reason);
+        if (ServiceLocator::has(Response::class)) {
+            /** @var Response $res */
+            if(!is_object($res))
+                $res = ServiceLocator::get(Response::class);
+            $res = $res->withStatus($code);
+            if($send)
+                $res->send();
+            return $res;
+        } else {
+            if (!$this->hive['CLI'] && !headers_sent())
+                header($_SERVER['SERVER_PROTOCOL'].' '.$code.' '.$reason);
+        }
+        
         return $reason;
     }
 
@@ -829,29 +726,50 @@ trait F3Tools {
     *   Send cache metadata to HTTP client
     *   @param $secs int
     **/
-    function expire($secs=0) {
-        if (!$this->hive['CLI'] && !headers_sent()) {
-            $secs=(int)$secs;
-            if ($this->hive['XFRAME'])
-                header('X-Frame-Options: '.$this->hive['XFRAME']);
-            header('X-XSS-Protection: 1; mode=block');
-            header('X-Content-Type-Options: nosniff');
-            if (!empty($this->hive['CSP'])) header('Content-Security-Policy: '.$this->hive['CSP']);
-            if (!empty($this->hive['REFPOL'])) header('Referrer-Policy: '.$this->hive['REFPOL']);
-            if (!empty($this->hive['PERMPOL'])) header('Permissions-Policy: '.$this->hive['PERMPOL']);
-            if ($this->hive['VERB']=='GET' && $secs) {
-                $time=microtime(TRUE);
-                header_remove('Pragma');
-                header('Cache-Control: max-age='.$secs);
-                header('Expires: '.gmdate('r',round($time+$secs)));
-                header('Last-Modified: '.gmdate('r'));
-            }
-            else {
-                header('Pragma: no-cache');
-                header('Cache-Control: no-cache, no-store, must-revalidate');
-                header('Expires: '.gmdate('r',0));
-            }
+    function expire(Request $req, Response $res, int $secs = 0): Response
+    {
+        if ($req->isCli()) {
+            return $res; // в CLI заголовки не имеют смысла
         }
+
+        $now = time();
+
+        // Базовые защитные заголовки (оставляем, если уже проставлены где-то выше)
+        if (!$res->hasHeader('X-Frame-Options')) {
+            $res = $res->withHeader('X-Frame-Options', 'SAMEORIGIN');
+        }
+        if (!$res->hasHeader('X-Content-Type-Options')) {
+            $res = $res->withHeader('X-Content-Type-Options', 'nosniff');
+        }
+        if (!$res->hasHeader('X-XSS-Protection')) {
+            // Да, заголовок устарел, но для обратной совместимости можно оставить
+            $res = $res->withHeader('X-XSS-Protection', '1; mode=block');
+        }
+
+        $method = $req->getMethod();
+        $cacheable = ($secs > 0) && ($method === 'GET' || $method === 'HEAD');
+
+        if ($cacheable) {
+            // Убираем Pragma если есть поддержка withoutHeader()
+            if (method_exists($res, 'withoutHeader')) {
+                $res = $res->withoutHeader('Pragma');
+            }
+
+            $res = $res
+                ->withHeader('Cache-Control', 'max-age=' . $secs)
+                ->withHeader('Expires', gmdate('D, d M Y H:i:s', $now + $secs) . ' GMT');
+
+            if (!$res->hasHeader('Last-Modified')) {
+                $res = $res->withHeader('Last-Modified', gmdate('D, d M Y H:i:s', $now) . ' GMT');
+            }
+        } else {
+            $res = $res
+                ->withHeader('Pragma', 'no-cache')
+                ->withHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+                ->withHeader('Expires', 'Fri, 01 Jan 1990 00:00:00 GMT');
+        }
+
+        return $res;
     }
 
     /**
@@ -899,6 +817,14 @@ trait F3Tools {
         return $out;
     }
 
+    function error_min($code,$text='',?array $trace=NULL,$level=0) {
+        $header = @constant('self::HTTP_'.$code);
+        http_response_code($code);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => $header, 'code' => $code,'text' => $text,'trace'=>$this->hive['DEBUG']?$this->trace($trace):''], JSON_UNESCAPED_UNICODE);
+        die();
+    }
+
     /**
     *   Log error; Execute ONERROR handler if defined, else display
     *   default error page (HTML for synchronous requests, JSON string
@@ -909,74 +835,106 @@ trait F3Tools {
     *   @param $level int
     **/
     function error($code,$text='',?array $trace=NULL,$level=0) {
-        $prior=$this->hive['ERROR'];
-        $header=$this->status($code);
-        $req=$this->hive['VERB'].' '.$this->hive['PATH'];
-        if ($this->hive['QUERY'])
-            $req.='?'.$this->hive['QUERY'];
-        if (!$text)
-            $text='HTTP '.$code.' ('.$req.')';
-        $trace=$this->trace($trace);
-        $loggable=$this->hive['LOGGABLE'];
-        if (!is_array($loggable))
-            $loggable=$this->split($loggable);
-        foreach ($loggable as $status)
-            if ($status=='*' ||
-                preg_match('/^'.preg_replace('/\D/','\d',$status).'$/',(string) $code)) {
-                error_log($text);
-                foreach (explode("\n",$trace) as $nexus)
-                    if ($nexus)
-                        error_log($nexus);
-                break;
-            }
+        $header = @constant('self::HTTP_'.$code);
+        if (ServiceLocator::has(Request::class) && ServiceLocator::has(Response::class)) {
+            $request = ServiceLocator::get(Request::class);
+            $response = ServiceLocator::get(Response::class);
+            $prior=$this->hive['ERROR'];
+            $response=$response->withStatus($code);
+            $req=$request->getMethod().' '.$request->getPath();
+            $query=$request->getQueryStr();
+            if ($query)
+                $req.='?'.$query;
+            if (!$text)
+                $text='HTTP '.$code.' ('.$req.')';
+            $trace=$this->trace($trace);
+            $loggable=$this->hive['LOGGABLE'];
+            if (!is_array($loggable))
+                $loggable=$this->split($loggable);
+            foreach ($loggable as $status)
+                if ($status=='*' ||
+                    preg_match('/^'.preg_replace('/\D/','\d',$status).'$/',(string) $code)) {
+                    error_log($text);
+                    foreach (explode("\n",$trace) as $nexus)
+                        if ($nexus)
+                            error_log($nexus);
+                    break;
+                }
 
-        if ($highlight=(!$this->hive['CLI'] && !$this->hive['AJAX'] &&
-            $this->hive['HIGHLIGHT'] && is_file($css=SITE_ROOT.'/'.self::CSS)))
-            $trace=$this->highlight($trace);
-        $this->hive['ERROR']=[
-            'status'=>$header,
-            'code'=>$code,
-            'text'=>$text,
-            'trace'=>$trace,
-            'level'=>$level
-        ];
-        $this->expire(-1);
-        $handler=$this->hive['ONERROR'];
-        $this->hive['ONERROR']=NULL;
-        $eol="\n";
-        if ((!$handler ||
-            $this->call($handler,[$this,$this->hive['PARAMS']],
-                'beforeroute,afterroute')===FALSE) &&
-            !$prior && !$this->hive['QUIET']) {
-            $error=array_diff_key(
-                $this->hive['ERROR'],
-                $this->hive['DEBUG']?
-                    []:
-                    ['trace'=>1]
-            );
-            if ($this->hive['CLI'])
-                echo PHP_EOL.'==================================='.PHP_EOL.
-                    'ERROR '.$error['code'].' - '.$error['status'].PHP_EOL.
-                    $error['text'].PHP_EOL.PHP_EOL.(isset($error['trace']) ? $error['trace'] : '');
-            else
-                echo $this->hive['AJAX']?
-                    json_encode($error):
-                    ('<!DOCTYPE html>'.$eol.
-                    '<html>'.$eol.
-                    '<head>'.
-                        '<title>'.$code.' '.$header.'</title>'.
-                        ($highlight?
-                            ('<style>'.$this->read($css).'</style>'):'').
-                    '</head>'.$eol.
-                    '<body>'.$eol.
-                        '<h1>'.$header.'</h1>'.$eol.
-                        '<p>'.$this->encode($text?:$req).'</p>'.$eol.
-                        ($this->hive['DEBUG']?('<pre>'.$trace.'</pre>'.$eol):'').
-                    '</body>'.$eol.
-                    '</html>');
+            if ($highlight=(!$request->isCli() && !$request->isAjax() &&
+                $this->hive['HIGHLIGHT'] && is_file($css=SITE_ROOT.'/'.self::CSS)))
+                $trace=$this->highlight($trace);
+            $this->hive['ERROR']=[
+                'status'=>$header,
+                'code'=>$code,
+                'text'=>$text,
+                'trace'=>$trace,
+                'level'=>$level
+            ];
+            //$res = $this->expire($request, $response, -1);
+            $handler=$this->hive['ONERROR'];
+            $this->hive['ONERROR']=NULL;
+            $eol="\n";
+            if ((!$handler ||
+                $this->call($handler,[$this,$this->hive['PARAMS']],
+                    'beforeroute,afterroute')===FALSE) &&
+                !$prior && !$this->hive['QUIET']) {
+                $error=array_diff_key(
+                    $this->hive['ERROR'],
+                    $this->hive['DEBUG']?
+                        []:
+                        ['trace'=>1]
+                );
+                if ($request->isCli())
+                    $body = PHP_EOL.'==================================='.PHP_EOL.
+                        'ERROR '.$error['code'].' - '.$error['status'].PHP_EOL.
+                        $error['text'].PHP_EOL.PHP_EOL.(isset($error['trace']) ? $error['trace'] : '');
+                else
+                    $body = $request->isAjax()?
+                        json_encode($error):
+                        ('<!DOCTYPE html>'.$eol.
+                        '<html>'.$eol.
+                        '<head>'.
+                            '<title>'.$code.' '.$header.'</title>'.
+                            ($highlight?
+                                ('<style>'.$this->read($css).'</style>'):'').
+                        '</head>'.$eol.
+                        '<body>'.$eol.
+                            '<h1>'.$header.'</h1>'.$eol.
+                            '<p>'.$this->encode($text?:$req).'</p>'.$eol.
+                            ($this->hive['DEBUG']?('<pre>'.$trace.'</pre>'.$eol):'').
+                        '</body>'.$eol.
+                        '</html>');
+                $response = $response->withBody($body);
+            }
+            $response->send($request->isCli());
+        } else {
+            $this->error_min($code,$text,$trace,$level);
         }
         if ($this->hive['HALT'])
             die(1);
+    }
+    
+    /**
+    *   Disconnect HTTP client;
+    *   Set FcgidOutputBufferSize to zero if server uses mod_fcgid;
+    *   Disable mod_deflate when rendering text/html output
+    **/
+    function abort() {
+        if (!headers_sent() && session_status()!=PHP_SESSION_ACTIVE)
+            session_start();
+        $out='';
+        while (ob_get_level())
+            $out=ob_get_clean().$out;
+        if (!headers_sent()) {
+            header('Content-Length: '.strlen($out));
+            header('Connection: close');
+        }
+        session_commit();
+        echo $out;
+        flush();
+        if (function_exists('fastcgi_finish_request'))
+            fastcgi_finish_request();
     }
 
     /**
@@ -1047,10 +1005,13 @@ trait F3Tools {
                             E_USER_ERROR);
                 }
                 else {
-                    $ref=new \ReflectionClass($parts[1]);
+                    user_error(sprintf(self::E_Container,
+                            $this->stringify($parts[1])),
+                            E_USER_ERROR);
+                    /*$ref=new \ReflectionClass($parts[1]);
                     $parts[1]=method_exists($parts[1],'__construct') && $args?
                         $ref->newinstanceargs($args):
-                        $ref->newinstance();
+                        $ref->newinstance();*/
                 }
             }
             $func=[$parts[1],$parts[3]];
@@ -1217,13 +1178,12 @@ trait F3Tools {
     *   @return string
     **/
     function agent() {
-        $headers=$this->hive['HEADERS'];
-        return isset($headers['X-Operamini-Phone-UA'])?
-            $headers['X-Operamini-Phone-UA']:
-            (isset($headers['X-Skyfire-Phone'])?
-                $headers['X-Skyfire-Phone']:
-                (isset($headers['User-Agent'])?
-                    $headers['User-Agent']:''));
+        $agent =
+            $this->call(Request::class.'->getHeader', ['X-Operamini-Phone-UA']) ?:
+            $this->call(Request::class.'->getHeader', ['X-Skyfire-Phone'])     ?:
+            $this->call(Request::class.'->getHeader', ['User-Agent'])          ?:
+            ($this->hive['AGENT'] ?? null);
+        return $agent;
     }
 
     /**
@@ -1231,9 +1191,7 @@ trait F3Tools {
     *   @return bool
     **/
     function ajax() {
-        $headers=$this->hive['HEADERS'];
-        return isset($headers['X-Requested-With']) &&
-            $headers['X-Requested-With']=='XMLHttpRequest';
+        return (bool)$this->call(Request::class.'->isAjax');
     }
 
     /**
@@ -1241,13 +1199,11 @@ trait F3Tools {
     *   @return string
     **/
     function ip() {
-        $headers=$this->hive['HEADERS'];
-        return isset($headers['Client-IP'])?
-            $headers['Client-IP']:
-            (isset($headers['X-Forwarded-For'])?
-                explode(',',$headers['X-Forwarded-For'])[0]:
-                (isset($_SERVER['REMOTE_ADDR'])?
-                    $_SERVER['REMOTE_ADDR']:''));
+        $xf  = (string)$this->call(Request::class.'->getHeader', ['X-Forwarded-For']);
+        $cip = (string)$this->call(Request::class.'->getHeader', ['Client-IP']);
+        if ($cip && filter_var($cip, FILTER_VALIDATE_IP)) return $cip;
+        if ($xf && preg_match('/^\\s*([^,])/', $xf, $m) && filter_var($m[1], FILTER_VALIDATE_IP)) return $m[1];
+        return $this->call(Request::class.'->clientIp');
     }
 
 
@@ -1319,9 +1275,9 @@ trait F3Tools {
                 /** @var Exception $obj */
                 $this->hive['EXCEPTION']=$obj;
                 $this->error(500,
-                    $obj->getmessage().' '.
+                    $obj->getMessage().' '.
                     '['.$obj->getFile().':'.$obj->getLine().']',
-                    $obj->gettrace());
+                    $obj->getTrace());
             }
         );
         set_error_handler(
@@ -1333,110 +1289,17 @@ trait F3Tools {
                 }
             }
         );
-        if (!isset($_SERVER['SERVER_NAME']) || $_SERVER['SERVER_NAME']==='')
-            $_SERVER['SERVER_NAME']=gethostname();
-        $headers=[];
-        if ($cli=(PHP_SAPI=='cli')) {
-            // Emulate HTTP request
-            $_SERVER['REQUEST_METHOD']='GET';
-            if (!isset($_SERVER['argv'][1])) {
-                ++$_SERVER['argc'];
-                $_SERVER['argv'][1]='/';
-            }
-            $req=$query='';
-            if (substr($_SERVER['argv'][1],0,1)=='/') {
-                $req=$_SERVER['argv'][1];
-                $query=parse_url($req,PHP_URL_QUERY);
-            } else {
-                foreach($_SERVER['argv'] as $i=>$arg) {
-                    if (!$i) continue;
-                    if (preg_match('/^\-(\-)?(\w+)(?:\=(.*))?$/',$arg,$m)) {
-                        foreach($m[1]?[$m[2]]:str_split($m[2]) as $k)
-                            $query.=($query?'&':'').urlencode($k).'=';
-                        if (isset($m[3]))
-                            $query.=urlencode($m[3]);
-                    } else
-                        $req.='/'.$arg;
-                }
-                if (!$req)
-                    $req='/';
-                if ($query)
-                    $req.='?'.$query;
-            }
-            $_SERVER['REQUEST_URI']=$req;
-            parse_str($query?:'',$GLOBALS['_GET']);
-        }
-        elseif (function_exists('getallheaders')) {
-            foreach (getallheaders() as $key=>$val) {
-                $tmp=strtoupper(strtr($key,'-','_'));
-                // TODO: use ucwords delimiters for php 5.4.32+ & 5.5.16+
-                $key=strtr(ucwords(strtolower(strtr($key,'-',' '))),' ','-');
-                $headers[$key]=$val;
-                if (isset($_SERVER['HTTP_'.$tmp]))
-                    $headers[$key]=&$_SERVER['HTTP_'.$tmp];
-            }
-        }
-        else {
-            if (isset($_SERVER['CONTENT_LENGTH']))
-                $headers['Content-Length']=&$_SERVER['CONTENT_LENGTH'];
-            if (isset($_SERVER['CONTENT_TYPE']))
-                $headers['Content-Type']=&$_SERVER['CONTENT_TYPE'];
-            foreach (array_keys($_SERVER) as $key)
-                if (substr($key,0,5)=='HTTP_')
-                    $headers[strtr(ucwords(strtolower(strtr(
-                        substr($key,5),'_',' '))),' ','-')]=&$_SERVER[$key];
-        }
-        if (isset($headers['X-Http-Method-Override']))
-            $_SERVER['REQUEST_METHOD']=$headers['X-Http-Method-Override'];
-        elseif ($_SERVER['REQUEST_METHOD']=='POST' && isset($_POST['_method']))
-            $_SERVER['REQUEST_METHOD']=strtoupper($_POST['_method']);
-        $scheme=isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']=='on' ||
-            isset($headers['X-Forwarded-Proto']) &&
-            $headers['X-Forwarded-Proto']=='https'?'https':'http';
-        // Create hive early on to expose header methods
-        $this->hive=['HEADERS'=>&$headers];
-        if (function_exists('apache_setenv')) {
-            // Work around Apache pre-2.4 VirtualDocumentRoot bug
-            $_SERVER['DOCUMENT_ROOT']=str_replace($_SERVER['SCRIPT_NAME'],'',
-                $_SERVER['SCRIPT_FILENAME']);
-            apache_setenv("DOCUMENT_ROOT",$_SERVER['DOCUMENT_ROOT']);
-        }
-        $_SERVER['DOCUMENT_ROOT']=realpath($_SERVER['DOCUMENT_ROOT']);
-        $base='';
+        $cli = PHP_SAPI=='cli';
+        $base='/';
         if (!$cli)
             $base=rtrim($this->fixslashes(
                 dirname($_SERVER['SCRIPT_NAME'])),'/');
-        $uri=parse_url((preg_match('/^\w+:\/\//',$_SERVER['REQUEST_URI'])?'':
-                $scheme.'://'.$_SERVER['SERVER_NAME']).$_SERVER['REQUEST_URI']);
-        $_SERVER['REQUEST_URI']=$uri['path'].
-            (isset($uri['query'])?'?'.$uri['query']:'').
-            (isset($uri['fragment'])?'#'.$uri['fragment']:'');
-        $path=preg_replace('/^'.preg_quote($base,'/').'/','',$uri['path']);
-        $jar=[
-            'expire'=>0,
-            'lifetime'=>0,
-            'path'=>$base?:'/',
-            'domain'=>is_int(strpos($_SERVER['SERVER_NAME'],'.')) &&
-                !filter_var($_SERVER['SERVER_NAME'],FILTER_VALIDATE_IP)?
-                $_SERVER['SERVER_NAME']:'',
-            'secure'=>($scheme=='https'),
-            'httponly'=>TRUE,
-            'samesite'=>'Lax',
-        ];
-        $port=80;
-        if (!empty($headers['X-Forwarded-Port']))
-            $port=$headers['X-Forwarded-Port'];
-        elseif (!empty($_SERVER['SERVER_PORT']))
-            $port=$_SERVER['SERVER_PORT'];
+
         // Default configuration
-        $this->hive+=[
-            'AGENT'=>$this->agent(),
-            'AJAX'=>$this->ajax(),
+        $this->hive=[
             'ALIAS'=>'',
-            'AUTOLOAD'=>'./',
             'BASE'=>$base,
             'BITMASK'=>ENT_COMPAT,
-            'BODY'=>NULL,
             'CACHE'=>FALSE,
             'CASELESS'=>TRUE,
             'CLI'=>$cli,
@@ -1451,12 +1314,8 @@ trait F3Tools {
             'EXCEPTION'=>NULL,
             'EXEMPT'=>NULL,
             'FORMATS'=>[],
-            'FRAGMENT'=>isset($uri['fragment'])?$uri['fragment']:'',
             'HALT'=>TRUE,
             'HIGHLIGHT'=>FALSE,
-            'HOST'=>$_SERVER['SERVER_NAME'],
-            'IP'=>$this->ip(),
-            'JAR'=>$jar,
             'LOCK'=>LOCK_EX,
             'LOGGABLE'=>'*',
             'LOGS'=>'./',
@@ -1464,22 +1323,14 @@ trait F3Tools {
             'ONERROR'=>NULL,
             'ONREROUTE'=>NULL,
             'PARAMS'=>[],
-            'PATH'=>$path,
             'REROUTE_TRAILING_SLASH'=>TRUE,
             'PATTERN'=>NULL,
             'PLUGINS'=>$this->fixslashes(__DIR__).'/',
-            'PORT'=>$port,
             'PREFIX'=>NULL,
             'PREMAP'=>'',
-            'QUERY'=>isset($uri['query'])?$uri['query']:'',
             'QUIET'=>FALSE,
             'RAW'=>FALSE,
-            'REALM'=>$scheme.'://'.$_SERVER['SERVER_NAME'].
-                (!in_array($port,[80,443])?(':'.$port):'').
-                $_SERVER['REQUEST_URI'],
             'RESPONSE'=>'',
-            'ROOT'=>$_SERVER['DOCUMENT_ROOT'],
-            'SCHEME'=>$scheme,
             'SEED'=>$this->hash($_SERVER['SERVER_NAME'].$base),
             'SERIALIZER'=>extension_loaded($ext='igbinary')?$ext:'php',
             'TEMP'=>'tmp/',
@@ -1488,10 +1339,32 @@ trait F3Tools {
             'UI'=>'./',
             'UNLOAD'=>NULL,
             'UPLOADS'=>'./',
-            'URI'=>&$_SERVER['REQUEST_URI'],
-            'VERB'=>&$_SERVER['REQUEST_METHOD'],
             'XFRAME'=>'SAMEORIGIN'
         ];
+        // Снимок окружения и нормализация (всё, что раньше делали в bootstrap, теперь внутри Environment)
+        Environment::init(function (Environment $env) {
+            // Тут же можно задать доверенные прокси/хосты:
+            /*$env->setTrustedProxies(['127.0.0.1','10.0.0.0/8'])
+                ->setTrustedHosts(['^oasis\\.local$', '^md\\.local$'])
+                ->honorForwarded(true, true);*/
+        }, readBody: true);
+
+        
+
+        // Настройки cookie для сессии (на основе Environment)
+        $jar = Environment::instance()->sessionCookieParams();
+        if (!headers_sent() && session_status() !== PHP_SESSION_ACTIVE) {
+            session_cache_limiter('');
+            if (version_compare(PHP_VERSION, '7.3.0') >= 0) {
+                session_set_cookie_params($jar);
+            } else {
+                $legacy = $jar;
+                unset($legacy['samesite']);
+                call_user_func_array('session_set_cookie_params', $legacy);
+            }
+        }
+        $this->hive['JAR']=$jar;
+        
         $this->hive['CORS']+=[
             'headers'=>'',
             'origin'=>FALSE,
@@ -1499,36 +1372,17 @@ trait F3Tools {
             'expose'=>FALSE,
             'ttl'=>0
         ];
-        if (!headers_sent() && session_status()!=PHP_SESSION_ACTIVE) {
-            unset($jar['expire']);
-            session_cache_limiter('');
-            if (version_compare(PHP_VERSION, '7.3.0') >= 0)
-                session_set_cookie_params($jar);
-            else {
-                unset($jar['samesite']);
-                call_user_func_array('session_set_cookie_params',$jar);
-            }
-        }
         if (ini_get('auto_globals_jit')) {
             // Override setting
             $GLOBALS['_ENV']=$_ENV;
             $GLOBALS['_REQUEST']=$_REQUEST;
         }
-        // Sync PHP globals with corresponding hive keys
-        $this->init=$this->hive;
-        foreach (explode('|',self::GLOBALS) as $global) {
-            $sync=$this->sync($global);
-            $this->init+=[
-                $global=>preg_match('/SERVER|ENV/',$global)?$sync:[]
-            ];
-        }
+        
         if ($check && $error=error_get_last())
             // Error detected
             $this->error(500,
                 sprintf(self::E_Fatal,$error['message']),[$error]);
         date_default_timezone_set($this->hive['TZ']);
-        // Register framework autoloader
-        spl_autoload_register([$this,'autoload']);
         // Register shutdown handler
         register_shutdown_function([$this,'unload'],getcwd());
     }

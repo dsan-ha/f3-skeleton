@@ -76,7 +76,6 @@ class Template
             if (isset($_COOKIE[session_name()]) &&
                 !headers_sent() && session_status() != PHP_SESSION_ACTIVE)
                 session_start();
-            $fw->sync('SESSION');
             $data = $this->sandbox($file, $mime, $params);
 
             if (!empty($this->trigger['afterrender']['all'])){ // для всех шаблонов

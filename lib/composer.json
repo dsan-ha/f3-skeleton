@@ -1,6 +1,5 @@
 {
     "require": {
-        "bcosca/fatfree": "^3.9",
         "peppeocchi/php-cron-scheduler": "^4.0",
         "php-di/php-di": "^7.0",
         "symfony/yaml": "^7.3"

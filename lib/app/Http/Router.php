@@ -3,6 +3,8 @@
 namespace App\Http;
 
 use App\F4;
+use App\Http\Response;
+use App\Http\Request;
 
 class Router {
     const
@@ -26,9 +28,13 @@ class Router {
     private const TYPES = ['sync','ajax','cli'];
     private $globalMiddleware;
     private F4 $f3;
+    private Request $req;
+    private Response $res;
 
-    public function __construct(F4 $f3) {
+    public function __construct(F4 $f3, Request $req, Response $res) {
         $this->f3 = $f3;
+        $this->req = $req;
+        $this->res = $res;
         $this->globalMiddleware = new MiddlewareDispatcher();
         $base = $f3->get('BASE');
         $uri = $f3->get('URI');
@@ -47,7 +53,7 @@ class Router {
     function build($url, $args=[], $addParams=TRUE) {
         $params = $this->f3->get('PARAMS');
         if ($addParams)
-            $args+=$this->recursive($params, function($val) {
+            $args+=$this->f3->recursive($params, function($val) {
                 return implode('/', array_map('urlencode', explode('/', $val)));
             });
         if (is_array($url))
@@ -200,7 +206,7 @@ class Router {
     **/
     function reroute($url=NULL,$permanent=FALSE,$die=TRUE) {
         if (!$url)
-            $url=$this->f3->get('REALM');
+            $url=$this->req->getUri();
         if (is_array($url))
             $url=call_user_func_array([$this,'alias'],$url);
         elseif (preg_match('/^(?:@([^\/()?#]+)(?:\((.+?)\))*(\?[^#]+)*(#.+)*)/',
@@ -210,16 +216,17 @@ class Router {
                 (isset($parts[3])?$parts[3]:'').(isset($parts[4])?$parts[4]:'');
         else
             $url=$this->build($url);
+
         if (($handler=$this->f3->get('ONREROUTE')) &&
             $this->f3->call($handler,[$url,$permanent,$die])!==FALSE)
             return;
         if ($url[0]!='/' && !preg_match('/^\w+:\/\//i',$url))
             $url='/'.$url;
         if ($url[0]=='/' && (empty($url[1]) || $url[1]!='/')) {
-            $port=$this->f3->get('PORT');
+            $port=$this->req->getPort();
             $port=in_array($port,[80,443])?'':(':'.$port);
-            $url=$this->f3->get('SCHEME').'://'.
-                $this->f3->get('HOST').$port.$this->f3->get('BASE').$url;
+            $url=$this->req->getScheme().'://'.
+                $this->req->getHost().$port.$this->f3->get('BASE').$url;
         }
         $cli = $this->f3->get('CLI');
         if ($cli)
@@ -293,14 +300,17 @@ class Router {
     *   @return mixed
     **/
     function run() {
-        $f3 = $this->f3;
-        $verb = $f3->get('VERB');
-        $path = $f3->get('PATH');
-        $headers = $f3->get('HEADERS');
-        $cors = $f3->get('CORS');
-        $cli = $f3->get('CLI');
-        $query = $f3->get('QUERY');
-        $uri = $f3->get('URI');
+        $f3   = $this->f3;
+        $req  = $this->req;
+        $res  = $this->res;
+        $verb   = $req->getMethod();
+        $path   = $req->getPath();
+        $query  = $req->getQueryStr() ?? '';
+        $uri    = $req->getUri();
+        $cli    = $req->isCli();
+        $origin = $req->getHeader('Origin');
+        $acrm   = $req->getHeader('Access-Control-Request-Method');
+        $cors   = $f3->get('CORS');
         if (!$this->routes)
             // No routes defined
             user_error(self::E_Routes,E_USER_ERROR);
@@ -316,24 +326,22 @@ class Router {
         array_multisort($paths,SORT_DESC,$keys,$vals);
         $this->routes=array_combine($keys,$vals);
         // Convert to BASE-relative URL
-        $req=urldecode($path);
+        $req_url=urldecode($path);
         $preflight=FALSE;
-        if ($cors=(isset($headers['Origin']) &&
-            $cors['origin'])) {
-            header('Access-Control-Allow-Origin: '.$cors['origin']);
-            header('Access-Control-Allow-Credentials: '.
-                $f3->export($cors['credentials']));
-            $preflight=
-                isset($headers['Access-Control-Request-Method']);
+        if ($cors = ($origin && $cors['origin'])) {
+            $res = $res
+                ->withHeader('Access-Control-Allow-Origin', $cors['origin'])
+                ->withHeader('Access-Control-Allow-Credentials', $f3->export($cors['credentials']));
+            $preflight = (bool)$acrm;
         }
         $allowed=[];
         foreach ($this->routes as $pattern=>$routes) {
-            $args=$this->mask($pattern,$req);
-            if (!$args=$this->mask($pattern,$req))
+            $args=$this->mask($pattern,$req_url);
+            if (!$args=$this->mask($pattern,$req_url))
                 continue;
             ksort($args);
             $route=NULL;
-            $ptr=$cli?self::REQ_CLI:$f3->get('AJAX')+1;
+            $ptr=$cli?self::REQ_CLI:$req->isAjax()+1;
             if (isset($routes[$ptr][$verb]) ||
                 ($preflight && isset($routes[$ptr])) ||
                 isset($routes[$ptr=0]))
@@ -357,10 +365,12 @@ class Router {
                 // Save matching route
                 $f3->set('ALIAS',$alias);
                 $f3->set('PATTERN',$pattern);
-                if ($cors && $cors['expose'])
-                    header('Access-Control-Expose-Headers: '.
-                        (is_array($cors['expose'])?
-                            implode(',',$cors['expose']):$cors['expose']));
+                if ($cors && $cors['expose']) {
+                    $res = $res->withHeader(
+                        'Access-Control-Expose-Headers',
+                        is_array($cors['expose']) ? implode(',', $cors['expose']) : $cors['expose']
+                    );
+                }
                 if (is_string($handler)) {
                     // Replace route pattern tokens in handler if any
                     $handler=preg_replace_callback('/({)?@(\w+\b)(?(1)})/',
@@ -396,26 +406,22 @@ class Router {
                         list($headers,$body,$result)=$data;
                         if (!$cli)
                             array_walk($headers,'header');
-                        $f3->expire($cached[0]+$ttl-$now);
+                        $res = $f3->expire($req, $res, $cached[0]+$ttl-$now);
                     }
                     else
                         // Expire HTTP client-cached page
-                        $f3->expire($ttl);
+                        $res = $f3->expire($req, $res, $ttl);
                 }
                 else
-                    $f3->expire(0);
+                    $res = $f3->expire($req, $res, 0);
                 if (!strlen($body)) {
-                    if (!$f3->get('RAW') && !$f3->get('BODY'))
-                        $f3->set('BODY',file_get_contents('php://input'));
                     ob_start();
-                    $final = function () use ($args, $handler, $f3) {
-                        $res = $f3->call($handler,[$f3,$args,$handler],
-                        'beforeroute,afterroute');
-                        return $res;
+                    $final = function () use ($args, $handler, $f3, $req, &$res) {
+                        // Новый контракт контроллеров: ($req, $res, $params) 
+                        return $f3->call($handler, [$req, $res, $args], 'beforeroute,afterroute');
                     };
-                    // Call route handler
-                    $result=$fullMiddleware->dispatch($f3, $final);
-                    $body=ob_get_clean();
+                    $result = $fullMiddleware->dispatch($req, $res, $args, $final);
+                    $body   = ob_get_clean();
                     if (isset($cache) && !error_get_last()) {
                         // Save to cache backend
                         $f3->cache_set($hash,[
@@ -424,22 +430,27 @@ class Router {
                                 PREG_GREP_INVERT),$body,$result],$ttl);
                     }
                 }
-                $f3->set('RESPONSE',$body);
+                $f3->set('RESPONSE', $body);
                 if (!$f3->get('QUIET')) {
                     if ($kbps) {
-                        $ctr=0;
+                        // Если нужен троттлинг — выводим частями
+                        $buffer = '';
+                        $ctr=0; $now=microtime(true);
                         foreach (str_split($body,1024) as $part) {
-                            // Throttle output
-                            ++$ctr;
-                            if ($ctr/$kbps>($elapsed=microtime(TRUE)-$now) &&
-                                !connection_aborted())
-                                usleep(round(1e6*($ctr/$kbps-$elapsed)));
-                            echo $part;
+                            $ctr; $buffer .= $part;
+                            if ($ctr/$kbps > ($elapsed=microtime(true)-$now) && !connection_aborted()) {
+                                usleep((int)round(1e6*($ctr/$kbps-$elapsed)));
+                            }
                         }
+                        $res = $res->withBody($buffer);
+                    } else {
+                        $res = $res->withBody($body);
                     }
-                    else
-                        echo $body;
+
                 }
+                $this->res = $res;
+                $this->res->send($cli);      
+        
                 if ($result || $verb!='OPTIONS')
                     return $result;
             }
@@ -451,19 +462,16 @@ class Router {
         } elseif (!$cli) {
             if (!preg_grep('/Allow:/',$headers_send=headers_list()))
                 // Unhandled HTTP method
-                header('Allow: '.implode(',',array_unique($allowed)));
+                $res = $res->withHeader('Allow', implode(',', array_unique($allowed)));
             if ($cors) {
-                if (!preg_grep('/Access-Control-Allow-Methods:/',$headers_send))
-                    header('Access-Control-Allow-Methods: OPTIONS,'.
-                        implode(',',$allowed));
-                if ($cors['headers'] &&
-                    !preg_grep('/Access-Control-Allow-Headers:/',$headers_send))
-                    header('Access-Control-Allow-Headers: '.
-                        (is_array($cors['headers'])?
-                            implode(',',$cors['headers']):
-                            $cors['headers']));
-                if ($cors['ttl']>0)
-                    header('Access-Control-Max-Age: '.$cors['ttl']);
+                $res = $res->withHeader('Access-Control-Allow-Methods', 'OPTIONS,'.implode(',', $allowed));
+                if ($cors['headers']) {
+                    $res = $res->withHeader('Access-Control-Allow-Headers',
+                        is_array($cors['headers']) ? implode(',', $cors['headers']) : $cors['headers']);
+                }
+                if ($cors['ttl']) {
+                    $res = $res->withHeader('Access-Control-Max-Age', (string)$cors['ttl']);
+                }
             }
             if ($verb!='OPTIONS')
                 $f3->error(405);
@@ -495,28 +503,6 @@ class Router {
                     return TRUE;
         }
         return FALSE;
-    }
-
-    /**
-    *   Disconnect HTTP client;
-    *   Set FcgidOutputBufferSize to zero if server uses mod_fcgid;
-    *   Disable mod_deflate when rendering text/html output
-    **/
-    function abort() {
-        if (!headers_sent() && session_status()!=PHP_SESSION_ACTIVE)
-            session_start();
-        $out='';
-        while (ob_get_level())
-            $out=ob_get_clean().$out;
-        if (!headers_sent()) {
-            header('Content-Length: '.strlen($out));
-            header('Connection: close');
-        }
-        session_commit();
-        echo $out;
-        flush();
-        if (function_exists('fastcgi_finish_request'))
-            fastcgi_finish_request();
     }
 
     function addOnReroute(callable $handler){

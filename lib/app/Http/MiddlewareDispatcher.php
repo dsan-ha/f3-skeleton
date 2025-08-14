@@ -10,17 +10,17 @@ class MiddlewareDispatcher {
         return $this;
     }
 
-    public function dispatch($f3, callable $finalHandler) {
+    public function dispatch($req, $res, array $params, callable $finalHandler) {
         $stack = array_reverse($this->queue);
         $next = $finalHandler;
 
         foreach ($stack as $middleware) {
-            $next = function () use ($middleware, $f3, $next) {
-                return $middleware($f3, $next);
+            $next = function ($reqx, $resx, $paramsx) use ($middleware, $next) {
+                return $middleware($reqx, $resx, $paramsx, $next);
             };
         }
 
-        return $next($f3);
+        return $next($req, $res, $params);
     }
 
     public function getQueue(){

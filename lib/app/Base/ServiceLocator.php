@@ -25,7 +25,15 @@ class ServiceLocator {
     }
 
     public static function has($className): mixed {
+        if(!self::$container) return false;
         $continer = self::getContainer();
         return $continer->has($className);
+    }
+
+    public static function hasStrict(string $id): bool {
+        if(!self::$container) return false;
+        $continer = self::getContainer();
+        return $continer->has($id)
+            && isset($continer::$definitions[$id]);
     }
 }

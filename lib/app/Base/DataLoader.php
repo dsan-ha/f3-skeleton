@@ -2,7 +2,7 @@
 namespace App\Base;
 
 use App\F4;
-use Symfony\Component\Yaml\Yaml;           // YAML-парсер из composer
+use Symfony\Component\Yaml\Yaml;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RegexIterator;

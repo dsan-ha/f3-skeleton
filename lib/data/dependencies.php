@@ -49,12 +49,7 @@ $f3->set('CONTAINER',function($className, $args = null){
         return ServiceLocator::get($className);
     }
     
-    if (class_exists($className)) {
-        $ref = new ReflectionClass($className);
-        return $args ? $ref->newInstanceArgs($args) : $ref->newInstance();
-    }
-    
-    throw new Exception("Service {$className} not found");
+    user_error("Service '{$className}' not found in container", E_USER_ERROR);
 });
 
 $router = ServiceLocator::get(App\Http\Router::class);
