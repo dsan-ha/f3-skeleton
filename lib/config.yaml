@@ -1,6 +1,7 @@
 DEBUG: 1
 CACHE: "folder=lib/tmp/cache/base"
 UI: "ui/"
+DI_AUTOWIRING: true
 HIGHLIGHT: true
 db:
   dsn: mysql:host=mysql-5.7;port=3306;dbname=fff_skeleton

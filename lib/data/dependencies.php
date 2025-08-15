@@ -5,8 +5,8 @@ use App\Base\ServiceLocator;
 use Symfony\Component\Yaml\Yaml;
 use DI\ContainerBuilder;
 
-$containerBuilder = new ContainerBuilder();
-
+$sl = new ServiceLocator();
+$f3 = App\F4::instance();
 
 // Загружаем все определения
 $definitions = [];
@@ -30,27 +30,20 @@ foreach ($paths as $dir) {
         if ($ext === 'yaml' || $ext === 'yml') {
             $yaml = Yaml::parseFile($fullPath);
             if (!empty($yaml['services'])) {
-                $containerBuilder->addDefinitions($yaml['services']);
+                $sl->addDefinitions($yaml['services']);
             }
         } elseif ($ext === 'php') {
             $definitions = require $fullPath;
             if (is_array($definitions)) {
-                $containerBuilder->addDefinitions($definitions);
+                $sl->addDefinitions($definitions);
             }
         }
     }
 }
-$containerBuilder->useAutowiring(true);
-$containerBuilder->addDefinitions($definitions);
+$containerBuilder = new ContainerBuilder();
+$sl = $sl->useAutowiring($f3->get('DI_AUTOWIRING'))
+    ->initContainer($containerBuilder);
+$f3->set('CONTAINER',$sl);
 
-ServiceLocator::setContainer($containerBuilder->build());
-$f3->set('CONTAINER',function($className, $args = null){
-    if (ServiceLocator::has($className)) {
-        return ServiceLocator::get($className);
-    }
-    
-    user_error("Service '{$className}' not found in container", E_USER_ERROR);
-});
-
-$router = ServiceLocator::get(App\Http\Router::class);
+$router = $f3->getDI(App\Http\Router::class);
 $f3->initRouter($router);

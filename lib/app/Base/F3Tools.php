@@ -2,7 +2,6 @@
 
 namespace App\Base;
 
-use App\Base\ServiceLocator;
 use App\Http\Response;
 use App\Http\Request;
 use App\Http\Environment;
@@ -96,8 +95,21 @@ trait F3Tools {
         $locks=[],
         $cache;
 
+    /**
+     * Возвращает инстанс F4-обёртки (синглтон)
+     * @return F4
+     */
+    public static function instance()
+    {
+        if (self::$instance === null) {
+            $f3 = new self();
+            self::$instance = $f3;
+            $f3->bootstrap();
+        }
+        return self::$instance;
+    }
 
-    function initCache($cache)
+    function initCache(&$cache)
     {
         $this->cache = $cache;
     }
@@ -120,6 +132,20 @@ trait F3Tools {
     function cache_get($cache)
     {
         $this->cache->get($key, self::Cache_folder, $value);
+    }
+
+    function hasDI(string $id): bool {
+        $f3 = self::instance();
+        if((bool)!$f3->exists('CONTAINER', $c)) return false;
+        return $c->has($id);
+    }
+
+    function getDI(string $id) {
+        $f3 = self::instance();
+        if ((bool)!$f3->exists('CONTAINER', $c)) {
+            throw new \RuntimeException('DI container not initialized');
+        }
+        return $c->get($id);
     }
 
     /**
@@ -706,10 +732,10 @@ trait F3Tools {
     **/
     function status($code, $res=null, $send = false) {
         $reason=@constant('self::HTTP_'.$code);
-        if (ServiceLocator::has(Response::class)) {
+        if ($this->hasDI(Response::class)) {
             /** @var Response $res */
             if(!is_object($res))
-                $res = ServiceLocator::get(Response::class);
+                $res = $this->getDI(Response::class);
             $res = $res->withStatus($code);
             if($send)
                 $res->send();
@@ -820,8 +846,8 @@ trait F3Tools {
     function error_min($code,$text='',?array $trace=NULL,$level=0) {
         $header = @constant('self::HTTP_'.$code);
         http_response_code($code);
-            header('Content-Type: application/json');
-            echo json_encode(['error' => $header, 'code' => $code,'text' => $text,'trace'=>$this->hive['DEBUG']?$this->trace($trace):''], JSON_UNESCAPED_UNICODE);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => $header, 'code' => $code,'text' => $text,'trace'=>$this->hive['DEBUG']?$this->trace($trace):''], JSON_UNESCAPED_UNICODE);
         die();
     }
 
@@ -836,9 +862,9 @@ trait F3Tools {
     **/
     function error($code,$text='',?array $trace=NULL,$level=0) {
         $header = @constant('self::HTTP_'.$code);
-        if (ServiceLocator::has(Request::class) && ServiceLocator::has(Response::class)) {
-            $request = ServiceLocator::get(Request::class);
-            $response = ServiceLocator::get(Response::class);
+        if ($this->hasDI(Request::class) && $this->hasDI(Response::class)) {
+            $request = $this->getDI(Request::class);
+            $response = $this->getDI(Response::class);
             $prior=$this->hive['ERROR'];
             $response=$response->withStatus($code);
             $req=$request->getMethod().' '.$request->getPath();
@@ -978,97 +1004,143 @@ trait F3Tools {
 
 
     /**
-    *   Grab the real route handler behind the string expression
-    *   @return string|array
-    *   @param $func string
-    *   @param $args array
-    **/
-    function grab($func,$args=NULL) {
-        if (preg_match('/(.+)\h*(->|::)\h*(.+)/s',$func,$parts)) {
-            // Convert string to executable PHP callback
-            if (!class_exists($parts[1]))
-                user_error(sprintf(self::E_Class,$parts[1]),E_USER_ERROR);
-            if ($parts[2]=='->') {
-                if (isset($this->hive['CONTAINER'])) {
-                    $container=$this->hive['CONTAINER'];
-                    if (is_object($container) && is_callable([$container,'has'])
-                        && $container->has($parts[1])) // PSR11
-                        $parts[1]=call_user_func([$container,'get'],$parts[1]);
-                    elseif (is_callable($container))
-                        $parts[1]=call_user_func($container,$parts[1],$args);
-                    elseif (is_string($container) && class_exists($container) && method_exists($container, 'instance'))
-                        $parts[1]=call_user_func($container.'::instance')->
-                            get($parts[1]);
-                    else
-                        user_error(sprintf(self::E_Class,
-                            $this->stringify($parts[1])),
-                            E_USER_ERROR);
-                }
-                else {
-                    user_error(sprintf(self::E_Container,
-                            $this->stringify($parts[1])),
-                            E_USER_ERROR);
-                    /*$ref=new \ReflectionClass($parts[1]);
-                    $parts[1]=method_exists($parts[1],'__construct') && $args?
-                        $ref->newinstanceargs($args):
-                        $ref->newinstance();*/
-                }
+     * Grab the real route handler behind the string expression
+     * Always returns either [$className, $method] or [$functionName]
+     * @param string $func
+     * @param array $args
+     * @return array
+     */
+    function grab($func) {
+        if(!is_string($func)) user_error('Grab function error', E_USER_ERROR);
+        // "Class->method" или "Class::method"
+        if (preg_match('/^(.+)\h*(->|::)\h*(.+)$/s', $func, $parts)) {
+            if (!class_exists($parts[1])) {
+                user_error(sprintf(self::E_Class, $parts[1]), E_USER_ERROR);
             }
-            $func=[$parts[1],$parts[3]];
+            return [$parts[1], $parts[3]];
         }
-        return $func;
+
+        // Обычная функция в виде строки
+        return [$func];
     }
 
     /**
     *   Execute callback/hooks (supports 'class->method' format)
     *   @return mixed|FALSE
-    *   @param $func callback
-    *   @param $args mixed
+    *   @param $func callback|array|string
+    *   @param $args string
     *   @param $hooks string
     **/
-    function call($func,$args=NULL,$hooks='') {
+    function call($func,$args=NULL,string $hooks='') {
         if (!is_array($args))
             $args=[$args];
         // Grab the real handler behind the string representation
         if (is_string($func))
-            $func=$this->grab($func,$args);
-        // Execute function; abort if callback/hook returns FALSE
-        if (!is_callable($func))
-            // No route handler
-            if ($hooks=='beforeroute,afterroute') {
-                $allowed=[];
-                if (is_array($func))
-                    $allowed=array_intersect(
-                        array_map('strtoupper',get_class_methods($func[0])),
-                        explode('|',self::VERBS)
-                    );
-                header('Allow: '.implode(',',$allowed));
-                $this->error(405);
-            }
-            else
-                user_error(sprintf(self::E_Method,
-                    is_string($func)?$func:$this->stringify($func)),
-                    E_USER_ERROR);
-        $obj=FALSE;
-        if (is_array($func)) {
-            $hooks=$this->split($hooks);
-            $obj=TRUE;
+            $func=$this->grab($func);
+
+        if (!is_array($func) && is_callable($func)) {
+            $out = call_user_func_array($func, $args ?: []);
+            return ($out === FALSE) ? FALSE : $out;
         }
-        // Execute pre-route hook if any
-        if ($obj && $hooks && in_array($hook='beforeroute',$hooks) &&
-            method_exists($func[0],$hook) &&
-            call_user_func_array([$func[0],$hook],$args)===FALSE)
+
+        $count = count($func);
+        if ($count == 1) {
+            if (!is_callable($func[0])) {
+                user_error(sprintf(self::E_Method, $func[0]), E_USER_ERROR);
+            }
+            $out = call_user_func_array($func[0], $args ?: []);
+            return ($out === FALSE) ? FALSE : $out;
+        } elseif ($count !== 2) {
+            user_error('Invalid handler array: expected [$className, $method].', E_USER_ERROR);
+        }
+
+        if (is_string($func[0])) {
+            $func[0] = $this->resolveFromContainer($func[0]);
+        }
+
+        $hooks = $this->split($hooks);
+        $obj = is_object($func[0]);
+
+        // 405 If method not allowed / not callable
+        if (!$obj || !is_callable($func)) {
+            if ($hooks === 'beforeroute,afterroute' || (is_array($hooks) && implode(',', $hooks) === 'beforeroute,afterroute')) {
+                $allowed = [];
+                if ($obj) {
+                    $allowed = array_intersect(
+                        array_map('strtoupper', get_class_methods($func[0])),
+                        explode('|', self::VERBS)
+                    );
+                }
+                header('Allow: ' . implode(',', $allowed));
+                $this->error(405);
+            } else {
+                user_error(sprintf(self::E_Method, $this->stringify($func)), E_USER_ERROR);
+            }
+        }
+
+        // before hook
+        if ($obj && $hooks && in_array($hook='beforeroute', $hooks, true)
+            && method_exists($func[0], $hook)
+            && call_user_func_array([$func[0], $hook], $args) === FALSE) {
             return FALSE;
-        // Execute callback
-        $out=call_user_func_array($func,$args?:[]);
-        if ($out===FALSE)
+        }
+
+        // main call
+        $out = call_user_func_array($func, $args ?: []);
+        if ($out === FALSE) return FALSE;
+
+        // after hook
+        if ($obj && $hooks && in_array($hook='afterroute', $hooks, true)
+            && method_exists($func[0], $hook)
+            && call_user_func_array([$func[0], $hook], $args) === FALSE) {
             return FALSE;
-        // Execute post-route hook if any
-        if ($obj && $hooks && in_array($hook='afterroute',$hooks) &&
-            method_exists($func[0],$hook) &&
-            call_user_func_array([$func[0],$hook],$args)===FALSE)
-            return FALSE;
+        }
+
         return $out;
+    }
+
+    /**
+     * Резолвим класс через контейнер.
+     * Требует $this->hive['CONTAINER'] (PSR-11 или callable-резолвер).
+     * @param string $class
+     * @param array $args
+     * @return object
+     */
+    protected function resolveFromContainer(string $class) {
+        if (!isset($this->hive['CONTAINER'])) {
+            user_error(sprintf(self::E_Container, $class), E_USER_ERROR);
+        }
+        $container = $this->hive['CONTAINER'];
+
+        // PSR-11: has()/get()
+        if (is_object($container) && (is_callable([$container,'get']) || is_callable([$container,'has']))) {
+            if (is_callable([$container,'has'])) {
+                if (method_exists($container, 'has') && !$container->has($class)) {
+                    user_error(sprintf(self::E_Class, $class), E_USER_ERROR);
+                }
+            }
+            return $container->get($class);
+        }
+
+        // Callable-резолвер: fn(string $class): object
+        if (is_callable($container)) {
+            $instance = call_user_func($container, $class);
+            if (!is_object($instance)) {
+                user_error(sprintf(self::E_Class, $class), E_USER_ERROR);
+            }
+            return $instance;
+        }
+
+        // Статический локатор вида Container::instance()->get()
+        if (is_string($container) && class_exists($container) && method_exists($container, 'instance')) {
+            $loc = call_user_func($container.'::instance');
+            if (!is_object($loc) || !method_exists($loc, 'get')) {
+                user_error(sprintf(self::E_Container, $class), E_USER_ERROR);
+            }
+            return $loc->get($class);
+        }
+
+        user_error(sprintf(self::E_Container, $class), E_USER_ERROR);
     }
 
     /**
@@ -1179,9 +1251,9 @@ trait F3Tools {
     **/
     function agent() {
         $agent =
-            $this->call(Request::class.'->getHeader', ['X-Operamini-Phone-UA']) ?:
-            $this->call(Request::class.'->getHeader', ['X-Skyfire-Phone'])     ?:
-            $this->call(Request::class.'->getHeader', ['User-Agent'])          ?:
+            $this->call([Request::class,'getHeader'], ['X-Operamini-Phone-UA']) ?:
+            $this->call([Request::class,'getHeader'], ['X-Skyfire-Phone'])     ?:
+            $this->call([Request::class,'getHeader'], ['User-Agent'])          ?:
             ($this->hive['AGENT'] ?? null);
         return $agent;
     }
@@ -1191,7 +1263,7 @@ trait F3Tools {
     *   @return bool
     **/
     function ajax() {
-        return (bool)$this->call(Request::class.'->isAjax');
+        return (bool)$this->call([Request::class,'isAjax']);
     }
 
     /**
@@ -1199,11 +1271,11 @@ trait F3Tools {
     *   @return string
     **/
     function ip() {
-        $xf  = (string)$this->call(Request::class.'->getHeader', ['X-Forwarded-For']);
-        $cip = (string)$this->call(Request::class.'->getHeader', ['Client-IP']);
+        $xf  = (string)$this->call([Request::class,'getHeader'], ['X-Forwarded-For']);
+        $cip = (string)$this->call([Request::class,'getHeader'], ['Client-IP']);
         if ($cip && filter_var($cip, FILTER_VALIDATE_IP)) return $cip;
         if ($xf && preg_match('/^\\s*([^,])/', $xf, $m) && filter_var($m[1], FILTER_VALIDATE_IP)) return $m[1];
-        return $this->call(Request::class.'->clientIp');
+        return $this->call([Request::class,'clientIp']);
     }
 
 
@@ -1298,6 +1370,7 @@ trait F3Tools {
         // Default configuration
         $this->hive=[
             'ALIAS'=>'',
+            'DI_AUTOWIRING'=>TRUE,
             'BASE'=>$base,
             'BITMASK'=>ENT_COMPAT,
             'CACHE'=>FALSE,

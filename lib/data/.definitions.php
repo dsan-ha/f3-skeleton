@@ -14,7 +14,8 @@ $UIpaths = $f3->g('UI','ui/');
 
 return [
     App\F4::class => DI\factory(function () {
-        return App\F4::instance();
+        $f3 = App\F4::instance();
+        return $f3;
     }),
     Environment::class => DI\factory(function () {
         return Environment::instance();
@@ -28,8 +29,9 @@ return [
     App\Utils\Cache::class => DI\factory(function (App\F4 $f3) {
         $cache_folder = $f3->g('cache.folder','lib/tmp/cache/');
         $adapter = new FileCacheAdapter($cache_folder);
-        $f3->set('CACHE_ADAPTER', $adapter);
-        return new App\Utils\Cache($adapter);
+        $cache = new App\Utils\Cache($adapter);
+        $f3->initCache($cache);
+        return $cache;
     }),
     // template()->render()
     App\Utils\Template::class => create(App\Utils\Template::class)->constructor(get(App\F4::class),get(App\Utils\Cache::class), $UIpaths),

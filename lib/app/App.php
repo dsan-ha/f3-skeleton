@@ -43,10 +43,10 @@ final class App
 	public function setDefault(){
 		$this->meta = array(
 			'title' => 'Сайт',
-			'description' => 'Описание сайта',
+			'description' => '',
 		);
-		$this->f3->set('content.header','include/header.php');
-		$this->f3->set('content.footer','include/footer.php');
+		$this->f3->set('content.header','/include/header.php');
+		$this->f3->set('content.footer','/include/footer.php');
 	}
 
 	public function showHead(){
@@ -60,6 +60,7 @@ final class App
 	public function renderBuffer($html, $file){
 		$headHtml = '';
 		$footerHtml = '';
+		$headHtml .= $this->generateMeta();
 		$headHtml .= $this->assets->renderCss();
 		$headHtml .= $this->assets->renderJs();
 		$buffer = [];
@@ -80,7 +81,7 @@ final class App
 			return $content[$val];
 		} else {
 			$this->f3->set('block_not_found',$val);
-			return 'include/block404.php';
+			return '/include/block404.php';
 		}
 	}
 
@@ -89,5 +90,13 @@ final class App
 		if(!empty($key)){
 			$this->f3->set('content.'.$key,$val);
 		}
+	}
+
+	public function generateMeta(){
+		$text = [];
+		if(!empty($this->meta['description'])){
+			$text[] = '<meta name="description" content="'.$this->meta['description'].'">';
+		}
+		return implode("\n", $text);
 	}
 }

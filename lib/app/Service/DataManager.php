@@ -4,7 +4,6 @@ namespace App\Service;
 use App\F4;
 use App\Base\DB\SQL;
 use App\Base\DB\Mapper;
-use App\Base\ServiceLocator;
 use App\Service\DataManagerProtector;
 
 /**
@@ -28,7 +27,7 @@ abstract class DataManager {
     public function __construct(SQL $db, F4 $f3) {
         $this->db = $db;
         $this->f3 = $f3;
-        $this->protector = ServiceLocator::get(DataManagerProtector::class);
+        $this->protector = $f3->getDI(DataManagerProtector::class);
         $this->mapper = new Mapper($db, static::getTableName());
     }
 

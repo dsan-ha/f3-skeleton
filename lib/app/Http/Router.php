@@ -15,6 +15,7 @@ class Router {
         E_Named='Named route does not exist: %s',
         E_Alias='Invalid named route alias: %s',
         E_Onreroute='Router ONREROUTE method busy',
+        E_Handler = 'Invalid route handler. Use either [$className, $method] or a callable function.',
         E_Routes='No routes specified';
 
     const
@@ -138,11 +139,11 @@ class Router {
 
     /**
     *   Bind handler to route pattern
-    *   @return NULL
-    *   @param $pattern string|array
-    *   @param $handler callback
-    *   @param $ttl int
-    *   @param $kbps int
+    *   @return NULL* 
+    *   @param string|array $pattern
+    *   @param array|callable $handler  // только [$className, $method] или callable
+    *   @param int $ttl
+    *   @param int $kbps
     **/
     public function route($pattern,$handler,$ttl=0,$kbps=0) {
         $alias=null;
@@ -161,12 +162,20 @@ class Router {
         if (empty($parts[3]))
             user_error(sprintf(self::E_Pattern,$pattern),E_USER_ERROR);
         $type=empty($parts[5])?0:constant('self::REQ_'.strtoupper($parts[5]));
+        $validArrayForm =
+            is_array($handler)
+            && count($handler) === 2
+            && is_string($handler[0])
+            && is_string($handler[1]);
+        if (!is_callable($handler) && !$validArrayForm) {
+            user_error(self::E_Handler, E_USER_ERROR);
+        }
         $routes = new RoutesCollection();
         $uri = $this->f3->get('URI');
         foreach ($this->f3->split($parts[1]) as $verb) {
             if (!preg_match('/'.self::VERBS.'/',$verb))
                 $this->f3->error(501,$verb.' '.$uri);
-            $route = new Route([is_string($handler) ? trim($handler) : $handler,$ttl,$kbps,$alias]);
+            $route = new Route([$handler,$ttl,$kbps,$alias]);
             $this->routes[$parts[3]][$type][strtoupper($verb)] = &$route;
             $routes->addRoute($route);
         }
@@ -370,21 +379,6 @@ class Router {
                         'Access-Control-Expose-Headers',
                         is_array($cors['expose']) ? implode(',', $cors['expose']) : $cors['expose']
                     );
-                }
-                if (is_string($handler)) {
-                    // Replace route pattern tokens in handler if any
-                    $handler=preg_replace_callback('/({)?@(\w+\b)(?(1)})/',
-                        function($id) use($args) {
-                            $pid=count($id)>2?2:1;
-                            return isset($args[$id[$pid]])?
-                                $args[$id[$pid]]:
-                                $id[0];
-                        },
-                        $handler
-                    );
-                    if (preg_match('/(.+)\h*(?:->|::)/',$handler,$match) &&
-                        !class_exists($match[1]))
-                        $f3->error(404);
                 }
                 // Process request
                 $result=NULL;

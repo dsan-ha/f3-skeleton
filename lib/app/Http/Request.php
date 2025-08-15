@@ -10,6 +10,7 @@ class Request
     protected array $query;
     protected string $query_str;
     protected array $post;
+    protected array $request_params;
     protected array $cookies;
     protected array $files;
     protected array $headers;
@@ -42,6 +43,7 @@ class Request
         $this->server = $server;
         $this->query  = $_GET ?? [];
         $this->post   = $_POST ?? [];
+        $this->request_params  = $_REQUEST ?? [];
         $this->cookies = $_COOKIE ?? [];
         $this->files   = $_FILES ?? [];
         $this->headers =  $headers;
@@ -67,6 +69,7 @@ class Request
     public function getQueryParams(): array { return $this->query; }
     public function getQueryStr(): ?string { return $this->query_str; }
     public function getPostParams(): array { return $this->post; }
+    public function getRequestParams(): array { return $this->request_params; }
     public function getCookies(): array { return $this->cookies; }
     public function clientIp(): string { return $this->clientIp; }
     public function getPort(): string { return $this->port; }

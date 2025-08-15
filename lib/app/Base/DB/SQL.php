@@ -297,7 +297,7 @@ class SQL {
 	**/
 	function schema($table,$fields=NULL,$ttl=0) {
 		$fw=F4::instance();
-		if ($ttl && $fw->cache_init() &&
+		if ($ttl &&
 			($cached=$fw->cache_exists(
 				$hash=$fw->hash($this->dsn.$table.(is_array($fields) ? implode(',',$fields) : $fields)).'.schema',$result)) &&
 			$cached[0]+$ttl>microtime(TRUE))
@@ -410,7 +410,7 @@ class SQL {
 									) : NULL,
 							];
 					}
-				if ($ttl && $fw->cache_init())
+				if ($ttl)
 					// Save to cache backend
 					$fw->cache_set($hash,$rows,$ttl);
 				return $rows;

@@ -3,7 +3,6 @@
 namespace App\Component;
 
 use App\F4;
-use App\Base\ServiceLocator;
 use App\Utils\Assets;
 
 class ComponentManager {

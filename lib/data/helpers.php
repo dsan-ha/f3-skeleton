@@ -10,22 +10,22 @@ function f3(){
     return \App\F4::instance();
 }
 function app(){
-    return ServiceLocator::get(\App\App::class);
+    return \App\F4::instance()->getDI(\App\App::class);
 }
 function assets(){
-    return ServiceLocator::get(\App\Utils\Assets::class);
+    return \App\F4::instance()->getDI(\App\Utils\Assets::class);
 }
 function template(){
-    return ServiceLocator::get(\App\Utils\Template::class);
+    return \App\F4::instance()->getDI(\App\Utils\Template::class);
 }
 function app_component(string $componentName, string $componentTemplate, array $arParams = []){
     return app()->component_manager->run($componentName, $componentTemplate, $arParams);
 }
 function ds(){
-    return ServiceLocator::get(\App\DS::class);
+    return \App\F4::instance()->getDI(\App\DS::class);
 }
 function f3_cache(){
-    return ServiceLocator::get(App\Utils\Cache::class); //Если не инициализирован кэш то выдаст ошибку
+    return \App\F4::instance()->getDI(App\Utils\Cache::class); //Если не инициализирован кэш то выдаст ошибку
 }
 
 

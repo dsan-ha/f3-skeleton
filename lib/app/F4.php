@@ -23,29 +23,8 @@ class F4
      */
     protected static $instance = null;
 
-    /**
-     * Возвращает инстанс F4-обёртки (синглтон)
-     * @return F4
-     */
-    public static function instance()
-    {
-        if (self::$instance === null) {
-            $f3 = new self();
-            self::$instance = $f3;
-            $f3->bootstrap();
-            //$f3::init_f3();
-        }
-        return self::$instance;
-    }
+    
 
-    /**
-     * Инит обёртки
-     * @return F4
-     */
-    public static function init_f3()
-    {
-        self::$fw = \Base::instance();
-    }
 
     public static function initRouter(&$router)
     {
