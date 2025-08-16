@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Base\DB;
+namespace App\Service\DB;
 
 use App\F4;
 

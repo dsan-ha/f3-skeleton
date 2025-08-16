@@ -1,6 +1,6 @@
 <?php if(!defined('SITE_ROOT')) exit();
 use App\Service;
-use DB\SQL;
+use App\Service\DB\SQL;
 use function DI\autowire;
 use function DI\create;
 use function DI\get;

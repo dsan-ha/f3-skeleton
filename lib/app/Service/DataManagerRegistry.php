@@ -3,15 +3,16 @@
 namespace App\Service;
 
 use App\F4;
-use App\Base\DB\SQL;
-use ReflectionClass;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use RegexIterator;
+use App\Service\DB\SQL;
+use App\Service\DataEntityInterface;  
+use App\Service\Hydrator\HydratorInterface;
+use App\Service\Hydrator\MapHydrator;              
+use InvalidArgumentException;
 
 class DataManagerRegistry
 {
-    protected array $managers = [];
+    private array $managers = [];
+    private array $hydrators = [];
     protected SQL $db;
     protected F4 $f3;
 
@@ -19,6 +20,42 @@ class DataManagerRegistry
     {
         $this->db = $db;
         $this->f3 = $f3;
+    }
+
+    public function setHydrator(string $entityClass, HydratorInterface|callable $hydratorOrFactory): void
+    {
+        $this->hydrators[$entityClass] = $hydratorOrFactory;
+    }
+
+    public function getHydrator(string $entityClass): HydratorInterface
+    {
+        if (isset($this->hydrators[$entityClass])) {
+            $h = $this->hydrators[$entityClass];
+            $hydrator = is_callable($h) ? $h($this->db, $this->f3) : $h;
+            if (!$hydrator instanceof HydratorInterface) {
+                throw new InvalidArgumentException("Hydrator for $entityClass must implement HydratorInterface");
+            }
+            // Кэшируем обратно экземпляр, чтобы не вызывать фабрику повторно
+            return $this->hydrators[$entityClass] = $hydrator;
+        }
+
+        if (!is_a($entityClass, DataEntityInterface::class, true)) {
+            throw new InvalidArgumentException("$entityClass must implement ".DataEntity::class);
+        }
+
+        /** @var class-string<DataEntity> $entityClass */
+        $fieldsMap = $entityClass::getFieldsMap();
+        $dtoClass  = \method_exists($entityClass, 'getDtoClass') ? $entityClass::getDtoClass() : null;
+
+        $hydrator = new MapHydrator($fieldsMap, $dtoClass);
+
+        // Кэш
+        return $this->hydrators[$entityClass] = $hydrator;
+    }
+
+    public function has(string $entityClass): bool
+    {
+        return isset($this->managers[$entityClass]);
     }
 
     /**
@@ -30,11 +67,14 @@ class DataManagerRegistry
     public function get(string $className): DataManager
     {
         if (!isset($this->managers[$className])) {
-            $this->managers[$className] = new $className($this->db, $this->f3);
+            $hydrator = $this->getHydrator($className);
+            $this->managers[$className] = new $className($this->db, $this->f3, $hydrator);
         }
 
         return $this->managers[$className];
     }
+
+
 
     /**
      * Получить все зарегистрированные DataManager-ы
@@ -42,6 +82,6 @@ class DataManagerRegistry
      */
     public function all(): array
     {
-        return $dm->managers;
+        return $this->managers;
     }
 }

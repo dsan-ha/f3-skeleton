@@ -87,7 +87,6 @@ trait F3Tools {
         E_Hive='Invalid hive key %s';
     //@}
 
-
     private
         //! Globals
         $hive,
@@ -135,14 +134,12 @@ trait F3Tools {
     }
 
     function hasDI(string $id): bool {
-        $f3 = self::instance();
-        if((bool)!$f3->exists('CONTAINER', $c)) return false;
+        if((bool)!this->exists('CONTAINER', $c)) return false;
         return $c->has($id);
     }
 
     function getDI(string $id) {
-        $f3 = self::instance();
-        if ((bool)!$f3->exists('CONTAINER', $c)) {
+        if ((bool)!$this->exists('CONTAINER', $c)) {
             throw new \RuntimeException('DI container not initialized');
         }
         return $c->get($id);
@@ -482,6 +479,46 @@ trait F3Tools {
             '/^(?:\[(?:\d+|\'[A-Za-z0-9_.-]+\'|"[A-Za-z0-9_.-]+")\]|->[A-Za-z_][A-Za-z0-9_]*)+$/u',
             $tail
         );
+    }
+
+    /**
+     *   
+     * Нормализация после json_decode
+     */
+    function normalizeJsonTypes($data) {
+        if (is_array($data)) {
+            foreach ($data as $key => $value) {
+                $data[$key] = $this->normalizeJsonTypes($value);
+            }
+        } elseif (is_string($data)) {
+            $lower = strtolower($data);
+            if ($lower === 'true') 
+                return true;
+            elseif ($lower === 'false')
+                return false;
+            elseif ($lower === 'null')
+                return null;
+            elseif (is_numeric($data)) {
+                return strpos($data, '.') !== false ? (float)$data : (int)$data;
+            }
+        }
+        return $data;
+    }
+
+    /**
+    *   Return TRUE if property has public visibility
+    *   @return bool
+    *   @param $obj object
+    *   @param $key string
+    **/
+    function visible($obj,$key) {
+        if (property_exists($obj,$key)) {
+            $ref=new ReflectionProperty(get_class($obj),$key);
+            $out=$ref->ispublic();
+            unset($ref);
+            return $out;
+        }
+        return FALSE;
     }
 
 

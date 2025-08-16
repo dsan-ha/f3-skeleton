@@ -2,9 +2,11 @@
 namespace App\Service;
 
 use App\F4;
-use App\Base\DB\SQL;
-use App\Base\DB\Mapper;
 use App\Service\DataManagerProtector;
+use App\Service\DB\SQL;
+use App\Service\DB\Cursor;
+use App\Service\DB\QueryBuilder;
+use App\Service\Hydrator\HydratorInterface;
 
 /**
  * Абстрактный класс для работы с таблицами через SQL или Mapper (Fat-Free Framework).
@@ -17,18 +19,20 @@ use App\Service\DataManagerProtector;
 abstract class DataManager {
     protected SQL $db;
     protected F4 $f3;
-    protected Mapper $mapper;
+    protected QueryBuilder $qb;
     protected DataManagerProtector $protector;
 
     /**
      * @param SQL $db экземпляр базы данных
      * @param F4 $f3 экземпляр фреймворка
      */
-    public function __construct(SQL $db, F4 $f3) {
+    public function __construct(SQL $db, F4 $f3, HydratorInterface $hydrator) {
         $this->db = $db;
         $this->f3 = $f3;
         $this->protector = $f3->getDI(DataManagerProtector::class);
-        $this->mapper = new Mapper($db, static::getTableName());
+        $fieldsMap = static::getFieldsMap();
+        $table     = static::getTableName();
+        $this->qb = new QueryBuilder($db, $table, $fieldsMap, pk: null, hydrator: $this->hydrator);
     }
 
     /**
@@ -47,7 +51,8 @@ abstract class DataManager {
     {
         $missing = [];
         foreach (static::getFieldsMap() as $field => $info) {
-            if (!empty($info['required']) && !array_key_exists($field, $data)) {
+            $required = $info['required'] ?? (!($info['nullable'] ?? true) && !($info['auto'] ?? false));
+            if ($required && !array_key_exists($field, $data)) {
                 $missing[] = $field;
             }
         }
@@ -70,51 +75,39 @@ abstract class DataManager {
      * @param int $id
      * @return array|null
      */
-    public function getById(int $id): ?array {
-        $result = $this->mapper->load(['id = ?', $id]);
-        return $result ? $result->cast() : null;
+    public function getById(int $id): object|array|null {
+        $cursor = $this->getList(['id = ?' => $id], ['limit' => 1]);
+        return $cursor->first(); // DTO или массив — зависит от getDtoClass()
     }
 
     /**
      * Основной метод выборки данных
-     * @param array $filter фильтр вида ['age >' => 18]
-     * @param array $order сортировка вида ['id' => 'DESC']
-     * @param int $limit лимит
-     * @param int $offset смещение
-     * @param array $joins массив JOIN'ов: [['type' => 'LEFT', 'table' => '...', 'on' => '...']]
-     * @param string $alias псевдоним основной таблицы
-     * @param array $select список полей, например ['u.id', 'p.name']
-     * @param array $useMapKeys ключи из getMap() для авто-JOIN'ов
-     * @param array $group поля для GROUP BY
-     * @param array $having условия HAVING
+     * @param array $options: ['where'=>['age >' => 18]'joins'=>[], 'group'=>'','select'=>[], 'having'=>'', 'order'=>'col DESC', 'limit'=>N, 'offset'=>M]
      * @return array[]
+
      */
     public function getList(
-        array $filter = [],
-        array $order = [],
-        int $limit = 0,
-        int $offset = 0,
-        array $joins = [],
-        string $alias = '',
-        array $select = ['*'],
-        array $useMapKeys = [],
-        array $group = [],
-        array $having = []
-    ): array {
+        array $options = []
+    ): Cursor {
         $params = [];
 
-        $sql  = $this->buildSelect($select, $alias);
-        $sql .= $this->buildJoins(array_merge(
-            $this->resolveMapJoins($useMapKeys),
-            $joins
-        ));
-        $sql .= $this->buildWhere($filter, $params);
-        $sql .= $this->buildGroup($group);
-        $sql .= $this->buildHaving($having, $params);
-        $sql .= $this->buildOrder($order);
-        $sql .= $this->buildLimit($limit, $offset);
+        $sql  = $this->buildSelect($options);
+        if(!empty($options['joins']))
+            $sql .= $this->buildJoins($options);
+        if(!empty($options['where']))
+            $sql .= $this->buildWhere($options['where'], $params);
+        if(!empty($options['group']))
+            $sql .= $this->buildGroup($options);
+        if(!empty($options['having']))
+            $sql .= $this->buildHaving($options, $params);
+        if(!empty($options['order']))
+            $sql .= $this->buildOrder($options);
+        if(!empty($options['limit']) || !empty($options['offset']))
+            $sql .= $this->buildLimit($options);
 
-        return $this->db->exec($sql, $params);
+        $rows = $this->db->exec($sql, $params);
+        foreach ($rows as &$row) { $row = $this->qb->rowHydration($row); }
+        return new Cursor($rows);
     }
 
     /**
@@ -134,16 +127,11 @@ abstract class DataManager {
      * @return bool
      */
     public function add(array $data): ?int {
-
         $this->validate($data);
-        $this->mapper->reset();
-        foreach (static::getFieldsMap() as $code => $field) {
-            if (isset($data[$code])) {
-                $this->mapper->$code = $data[$code];
-            }
-        }
-        
-        return $this->mapper->save()->get('_id');;
+        // фильтруем только известные поля по карте
+        $allowed = array_intersect_key($data, static::getFieldsMap());
+        if (!$allowed) return null;
+        return $this->qb->insert($allowed); // вернёт lastInsertId
     }
 
     /**
@@ -152,18 +140,12 @@ abstract class DataManager {
      * @param array $data данные для обновления
      * @return bool
      */
-    public function update(int $id, array $data): array {
-        $item = $this->mapper->load(['id = ?', $id]);
-        if (!$item) return false;
-
+    public function update(int $id, array $data): int {
         $this->validate($data);
-
-        foreach (static::getFieldsMap() as $code => $field) {
-            if (isset($data[$code])) {
-                $item->$code = $data[$code];
-            }
-        }
-        return $item->save()->find(['id = ?', $id]);
+        // обновляем только известные поля
+        $changes = array_intersect_key($data, static::getFieldsMap());
+        if (!$changes) return 0;
+        return $this->qb->update($id, $changes); // affected rows
     }
     
     /**
@@ -171,10 +153,9 @@ abstract class DataManager {
      * @param int $id
      * @return bool
      */
-    public function delete(int $id): bool {
-        $item = $this->mapper->load(['id = ?', $id]);
-        if (!$item) return false;
-        return $item->erase();
+    public function delete(int $id,string $key = 'id'): bool {
+        $key += ' = ?';
+        return $this->qb->erase([$key => $id]) > 0;
     }
 
     /**
@@ -183,12 +164,12 @@ abstract class DataManager {
      * @param string $alias
      * @return string
      */
-    protected function buildSelect(array $fields = ['*'], string $alias = ''): string {
+    protected function buildSelect(array $options): string {
+        $fields = !empty($options['select'])?$options['select']:['*'];
         $this->protector->assertSafeIdentifiers($fields);
         $fieldList = implode(', ', $fields);
-        $prefix = $this->f3->get('DB.prefix') ?: '';
         $table = static::getTableName();
-        $aliasSql = $alias ? " AS $alias" : '';
+        $aliasSql = !empty($options['alias']) ? " AS ".$options['alias'] : '';
         return "SELECT $fieldList FROM $table$aliasSql";
     }
 
@@ -197,33 +178,16 @@ abstract class DataManager {
      * @param array $joins
      * @return string
      */
-    protected function buildJoins(array $joins): string {
-        if(empty($joins)) return '';
+    protected function buildJoins(array $options): string {
         $sql = '';
-        $this->protector->assertSafeJoins($joins);
-        foreach ($joins as $join) {
+        $this->protector->assertSafeJoins($options['joins']);
+        foreach ($options['joins'] as $join) {
             $type = strtoupper($join['type'] ?? 'INNER');
             $table = $join['table'];
             $on = $join['on'];
             $sql .= " $type JOIN $table ON $on";
         }
         return $sql;
-    }
-
-    // Разрешить карту зависимых таблиц
-    protected function resolveMapJoins(array $mapKeys): array {
-        if (!method_exists($this, 'getMap')) return [];
-
-        $map = static::getMap();
-        $joins = [];
-
-        foreach ($mapKeys as $key) {
-            if (isset($map[$key])) {
-                $joins[] = $map[$key];
-            }
-        }
-
-        return $joins;
     }
 
     
@@ -233,9 +197,10 @@ abstract class DataManager {
      * @param array $params
      * @return string
      */
-    protected function buildWhere(array $filter, array &$params): string {
+    protected function buildWhere(array|string|null $filter, array &$params): string {
+        if(!$filter) return '';
+        if (is_string($filter)) return " WHERE $filter";
         $conditions = [];
-
         foreach ($filter as $key => $value) {
             // Оператор по умолчанию
             $operator = '=';
@@ -277,10 +242,11 @@ abstract class DataManager {
      * @param array $group
      * @return string
      */
-    protected function buildGroup(array $group): string {
-        if (empty($group)) return '';
+    protected function buildGroup(array $options): string {
+        if (empty($options['group'])) return '';
+        $group = (array)$options['group'];
         $this->protector->assertSafeGroup($group);
-        return ' GROUP BY ' . implode(', ', $group);
+        return ' GROUP BY '.implode(', ', $group);
     }
     
     /**
@@ -289,14 +255,12 @@ abstract class DataManager {
      * @param array $params
      * @return string
      */
-    protected function buildHaving(array $having, array &$params): string {
-        if (empty($having)) return '';
-
+    protected function buildHaving(array $options, array &$params): string {
         $conditions = [];
 
-        foreach ($having as $key => $value) {
+        foreach ($options['having'] as $key => $value) {
             $operator = '=';
-            if (preg_match('/^(.+?)\s+(=|!=|<>|>=|<=|>|<|LIKE|IN|NOT IN)$/i', $key, $matches)) {
+            if (preg_match('/^(.+?)\s+(=|!=|<>|>=|<=|>|<|LIKE|IN|NOT IN|IS NULL|IS NOT NULL)$/i', $key, $matches)) {
                 $field = trim($matches[1]);
                 $operator = strtoupper(trim($matches[2]));
             } else {
@@ -325,14 +289,19 @@ abstract class DataManager {
      * @param array $order
      * @return string
      */
-    protected function buildOrder(array $order): string {
-        if (empty($order)) return '';
-        $this->protector->assertSafeOrder($order);
-        $clauses = [];
-        foreach ($order as $field => $dir) {
-            $clauses[] = "$field $dir";
+    protected function buildOrder(array $options): string {
+        if (empty($options['order'])) return '';
+        if (is_string($options['order'])) {
+            $this->protector->assertSafeOrder($options['order']);
+            return ' ORDER BY '.$options['order'];
         }
-        return " ORDER BY " . implode(', ', $clauses);
+        // массив ['col1' => 'DESC', 'col2' => 'ASC']
+        $this->protector->assertSafeOrder($options['order']);
+        $clauses = [];
+        foreach ($options['order'] as $field => $dir) {
+            $clauses[] = "$field ".strtoupper($dir ?: 'ASC');
+        }
+        return ' ORDER BY '.implode(', ', $clauses);
     }
     
     /**
@@ -341,8 +310,20 @@ abstract class DataManager {
      * @param int $offset
      * @return string
      */
-    protected function buildLimit(int $limit, int $offset = 0): string {
-        if ($limit <= 0) return '';
+    protected function buildLimit(array $options): string {
+        if ($options['limit'] <= 0) return '';
+        $limit = (int)$options['limit'];
+        $offset = !empty($options['offset']) ? (int)$options['offset'] : 0;
         return " LIMIT $limit" . ($offset > 0 ? " OFFSET $offset" : '');
+    }
+
+    /**
+     * **Транзакции на уровне менеджера**  
+     * Вспомогательный хелпер:
+     */
+    public function tx(callable $fn): mixed {
+        $this->db->begin();
+        try { $res = $fn($this); $this->db->commit(); return $res; }
+        catch (\Throwable $e) { $this->db->rollback(); throw $e; }
     }
 }
