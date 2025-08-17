@@ -14,6 +14,18 @@ class DataManagerProtector
      */
     protected string $safePattern = '/^[\*a-zA-Z0-9_\.]+$/';
 
+    public function assertSafeSelect(array $options): void
+    {
+        if(!empty($options['select']))
+            $this->assertSafeIdentifiers($options['select']);
+        if(!empty($options['joins']))
+            $this->assertSafeJoins($options['joins']);
+        if(!empty($options['group']))
+            $this->assertSafeGroup($options['group']);
+        if(!empty($options['order']))
+            $this->assertSafeOrder($options['order']);
+    }
+
     /**
      * Проверка, что строка не содержит SQL-инъекций.
      * Используется для проверки алиасов, имён таблиц и полей.

@@ -5,14 +5,12 @@ namespace App;
 use App\Utils\Scheduler;
 use Symfony\Component\Yaml\Yaml;
 use Symfony\Component\Yaml\Exception\ParseException;
-use App\Utils\Cache\CacheInterface;
 use App\Base\F3Tools;
 
 
 class F4
 {
     use F3Tools;
-    protected static $router = null;
     /**
      * @var Base|null
      */
@@ -23,20 +21,12 @@ class F4
      */
     protected static $instance = null;
 
-    
-
-
-    public static function initRouter(&$router)
-    {
-        self::$router = $router;
-    }
-
     /**
      * 
      */
     public function run()
     {
-        $router = self::$router ?? throw new \RuntimeException(self::E_Router);
+        $router = $this->get('ROUTER') ?? throw new \RuntimeException(self::E_Router);
         if ($router->blacklisted($this->ip()))
             // Spammer detected
             $this->error(403);
@@ -44,7 +34,7 @@ class F4
     }
 
     public function route($pattern,$handler,$ttl=0,$kbps=0){
-        $router = self::$router ?? throw new \RuntimeException(self::E_Router);
+        $router = $this->get('ROUTER') ?? throw new \RuntimeException(self::E_Router);
         if (is_array($pattern)) {
             foreach ($pattern as $item)
                 $this->route($item,$handler,$ttl,$kbps);
@@ -55,7 +45,7 @@ class F4
     }
 
     public function reroute($url=NULL,$permanent=FALSE,$die=TRUE) {
-        $router = self::$router ?? throw new \RuntimeException(self::E_Router);
+        $router = $this->get('ROUTER') ?? throw new \RuntimeException(self::E_Router);
         $router->reroute($url,$permanent,$die);
     }
 
@@ -104,7 +94,7 @@ class F4
      */
     public function add(callable $handler)
     {
-        $router = self::$router ?? throw new \RuntimeException(self::E_Router);
+        $router = $this->get('ROUTER') ?? throw new \RuntimeException(self::E_Router);
         $router->addMiddleware($handler);
     }
 

@@ -20,6 +20,7 @@ abstract class DataManager {
     protected SQL $db;
     protected F4 $f3;
     protected QueryBuilder $qb;
+    protected HydratorInterface $hydrator;
     protected DataManagerProtector $protector;
 
     /**
@@ -29,10 +30,15 @@ abstract class DataManager {
     public function __construct(SQL $db, F4 $f3, HydratorInterface $hydrator) {
         $this->db = $db;
         $this->f3 = $f3;
+        $this->hydrator = $hydrator;
         $this->protector = $f3->getDI(DataManagerProtector::class);
         $fieldsMap = static::getFieldsMap();
         $table     = static::getTableName();
         $this->qb = new QueryBuilder($db, $table, $fieldsMap, pk: null, hydrator: $this->hydrator);
+    }
+
+    public function logSQL(){
+        return $this->db->log();
     }
 
     /**
@@ -47,26 +53,80 @@ abstract class DataManager {
      */
     abstract public static function getFieldsMap(): array;
 
-    protected function validateRequiredFields(array $data): array
+    protected function validate(array &$data, bool $onUpdate): void
     {
-        $missing = [];
-        foreach (static::getFieldsMap() as $field => $info) {
-            $required = $info['required'] ?? (!($info['nullable'] ?? true) && !($info['auto'] ?? false));
-            if ($required && !array_key_exists($field, $data)) {
-                $missing[] = $field;
+        $fieldsMap = static::getFieldsMap();
+        foreach ($fieldsMap as $field => $rules) {
+            $isPresent = array_key_exists($field, $data);
+            $required  = (bool)($rules['required'] ?? false);
+            // defaults только на insert
+            if (!$onUpdate && !$isPresent && array_key_exists('default', $rules)) {
+                $data[$field] = is_callable($rules['default']) ? $rules['default']() : $rules['default'];
+                $isPresent = true;
+            }
+            if ($required && !$onUpdate && !$isPresent) {
+                throw new \InvalidArgumentException("Field '$field' is required");
+            }
+            if (!$isPresent) continue;
+
+            $val = $data[$field];
+
+            if (!empty($rules['type'])) {
+                $type = $rules['type'];
+                switch ($type) {
+                    case 'string':
+                        if (!is_string($val)) throw new \InvalidArgumentException("Field '$field' must be string");
+                        break;
+                    case 'int':
+                        if (!is_int($val) && !(is_numeric($val) && (int)$val == $val)) {
+                          throw new \InvalidArgumentException("Field '$field' must be int");
+                        }
+                        $data[$field] = (int)$val;
+                        break;
+                    case 'float':
+                        if (!is_float($val) && !is_numeric($val)) {
+                          throw new \InvalidArgumentException("Field '$field' must be float");
+                        }
+                        $data[$field] = (float)$val;
+                        break;
+                    case 'bool':
+                        $data[$field] = (bool)$val;
+                        break;
+                    case 'date':
+                    case 'datetime':
+                        $ts = strtotime((string)$val);
+                        if ($ts === false) throw new \InvalidArgumentException("Field '$field' must be $type");
+                        // можно нормализовать формат
+                            break;
+                    case 'json':
+                        if (is_array($val)) { $data[$field] = json_encode($val, JSON_UNESCAPED_UNICODE); break; }
+                        json_decode((string)$val);
+                        if (json_last_error() !== JSON_ERROR_NONE) throw new \InvalidArgumentException("Field '$field' must be valid JSON");
+                        break;
+                    default:
+                        // кастомный тип — пропустим, либо кинем исключение
+                        break;
+                }
+            }
+
+            if (isset($rules['length']) && is_string($data[$field])) {
+                $len = mb_strlen($data[$field]);
+                if ($len > $rules['length']) {
+                     throw new \InvalidArgumentException("Field '$field' length must be <= {$rules['length']}");
+                }
             }
         }
-        return $missing;
     }
 
-    protected function validate(array $data): void
+    protected function filterKnown(array $data, bool $strict = true): array
     {
-        $missing = $this->validateRequiredFields($data);
-        if (!empty($missing)) {
-            throw new \InvalidArgumentException("Missing required fields: " . implode(', ', $missing));
+        $fieldsMap = static::getFieldsMap();
+        $known = array_intersect_key($data, $fieldsMap);
+        if ($strict && count($known) !== count($data)) {
+            $unknown = array_diff_key($data, $fieldsMap);
+            throw new \InvalidArgumentException('Unknown fields: ' . implode(', ', array_keys($unknown)));
         }
-
-        // Здесь можно добавить дополнительные проверки в будущем
+        return $known;
     }
 
 
@@ -76,38 +136,23 @@ abstract class DataManager {
      * @return array|null
      */
     public function getById(int $id): object|array|null {
-        $cursor = $this->getList(['id = ?' => $id], ['limit' => 1]);
+        $options = ['where' => ['id =' => $id], 'limit' => 1];
+        $cursor = $this->getList($options);
         return $cursor->first(); // DTO или массив — зависит от getDtoClass()
     }
 
     /**
      * Основной метод выборки данных
-     * @param array $options: ['where'=>['age >' => 18]'joins'=>[], 'group'=>'','select'=>[], 'having'=>'', 'order'=>'col DESC', 'limit'=>N, 'offset'=>M]
+     * @param array $options: ['where'=>['age >' => 18],'joins'=>[],'with'  => ['user'], 'group'=>'','select'=>[], 'having'=>'', 'order'=>'col DESC', 'limit'=>N, 'offset'=>M]
      * @return array[]
 
      */
     public function getList(
         array $options = []
     ): Cursor {
-        $params = [];
-
-        $sql  = $this->buildSelect($options);
-        if(!empty($options['joins']))
-            $sql .= $this->buildJoins($options);
-        if(!empty($options['where']))
-            $sql .= $this->buildWhere($options['where'], $params);
-        if(!empty($options['group']))
-            $sql .= $this->buildGroup($options);
-        if(!empty($options['having']))
-            $sql .= $this->buildHaving($options, $params);
-        if(!empty($options['order']))
-            $sql .= $this->buildOrder($options);
-        if(!empty($options['limit']) || !empty($options['offset']))
-            $sql .= $this->buildLimit($options);
-
-        $rows = $this->db->exec($sql, $params);
-        foreach ($rows as &$row) { $row = $this->qb->rowHydration($row); }
-        return new Cursor($rows);
+        $options = $options ?? [];
+        $this->protector->assertSafeSelect($options);
+        return $this->qb->find($options);
     }
 
     /**
@@ -127,11 +172,10 @@ abstract class DataManager {
      * @return bool
      */
     public function add(array $data): ?int {
-        $this->validate($data);
-        // фильтруем только известные поля по карте
-        $allowed = array_intersect_key($data, static::getFieldsMap());
-        if (!$allowed) return null;
-        return $this->qb->insert($allowed); // вернёт lastInsertId
+        $data = $this->filterKnown($data);
+        $this->validate($data, false);
+        if (!$data) return null;
+        return $this->qb->insert($data); // вернёт lastInsertId
     }
 
     /**
@@ -141,11 +185,10 @@ abstract class DataManager {
      * @return bool
      */
     public function update(int $id, array $data): int {
-        $this->validate($data);
-        // обновляем только известные поля
-        $changes = array_intersect_key($data, static::getFieldsMap());
-        if (!$changes) return 0;
-        return $this->qb->update($id, $changes); // affected rows
+        $data = $this->filterKnown($data);
+        $this->validate($data, true);
+        if (!$data) return 0;
+        return $this->qb->update($id, $data); // affected rows
     }
     
     /**
@@ -154,167 +197,68 @@ abstract class DataManager {
      * @return bool
      */
     public function delete(int $id,string $key = 'id'): bool {
-        $key += ' = ?';
+        $key .= ' = ?';
         return $this->qb->erase([$key => $id]) > 0;
     }
 
     /**
-     * Построить SELECT-часть запроса
-     * @param string[] $fields
-     * @param string $alias
-     * @return string
+     * Генерация SQL для CREATE TABLE по getFieldsMap() (MySQL).
+    * Для полей необходимо проставить поля для генерации nullable=true|false, default, autoIncrement, unique
+     * @return string|null SQL если execute=false; null если выполнено.
      */
-    protected function buildSelect(array $options): string {
-        $fields = !empty($options['select'])?$options['select']:['*'];
-        $this->protector->assertSafeIdentifiers($fields);
-        $fieldList = implode(', ', $fields);
+    public static function createTable(SQL $db, bool $execute = false): ?string
+    {
         $table = static::getTableName();
-        $aliasSql = !empty($options['alias']) ? " AS ".$options['alias'] : '';
-        return "SELECT $fieldList FROM $table$aliasSql";
-    }
+        $map   = static::getFieldsMap();
 
-    /**
-     * Построить JOIN'ы
-     * @param array $joins
-     * @return string
-     */
-    protected function buildJoins(array $options): string {
-        $sql = '';
-        $this->protector->assertSafeJoins($options['joins']);
-        foreach ($options['joins'] as $join) {
-            $type = strtoupper($join['type'] ?? 'INNER');
-            $table = $join['table'];
-            $on = $join['on'];
-            $sql .= " $type JOIN $table ON $on";
+        $cols = [];
+        $pk   = null;
+        $uniques = [];
+        $fks = [];
+
+        foreach ($map as $name => $rules) {
+            $sqlType = match ($rules['type'] ?? 'string') {
+                'int'      => 'INT',
+                'float'    => 'DOUBLE',
+                'bool'     => 'TINYINT(1)',
+                'date'     => 'DATE',
+                'datetime' => 'DATETIME',
+                'json'     => 'JSON',
+                default    => 'VARCHAR(' . ($rules['length'] ?? 255) . ')',
+            };
+            $nullable = !empty($rules['nullable']) ? 'NULL' : 'NOT NULL';
+            $default  = '';
+            if (array_key_exists('default', $rules)) {
+                $def = $rules['default'];
+                if ($def === null)       $default = ' DEFAULT NULL';
+                elseif (is_bool($def))   $default = ' DEFAULT ' . ($def ? '1':'0');
+                elseif (is_numeric($def))$default = ' DEFAULT ' . $def;
+                else                     $default = " DEFAULT '" . addslashes((string)$def) . "'";
+            }
+            $autoInc = !empty($rules['autoIncrement']) ? ' AUTO_INCREMENT' : '';
+            $cols[]  = "`$name` $sqlType $nullable$default$autoInc";
+            if (!empty($rules['pkey']))   $pk = $name;
+            if (!empty($rules['unique'])) $uniques[] = $name;
+            if (!empty($rules['ref']) && is_array($rules['ref'])) {
+                $ref = $rules['ref'];
+                $fkTable = $ref['table']   ?? null;
+                $fkField = $ref['foreign'] ?? 'id';
+                if ($fkTable) {
+                    $idx = "fk_{$table}_{$name}";
+                    $fks[] = "CONSTRAINT `$idx` FOREIGN KEY (`$name`) REFERENCES `$fkTable`(`$fkField`) ON DELETE "
+                        . strtoupper($ref['onDelete'] ?? 'RESTRICT')
+                        . " ON UPDATE " . strtoupper($ref['onUpdate'] ?? 'CASCADE');
+                }
+            }
         }
+        if ($pk) $cols[] = "PRIMARY KEY (`$pk`)";
+        foreach ($uniques as $u) $cols[] = "UNIQUE KEY `uniq_{$table}_{$u}` (`$u`)";
+        foreach ($fks as $fk)    $cols[] = $fk;
+
+        $sql = "CREATE TABLE IF NOT EXISTS `$table` (\n  " . implode(",\n  ", $cols) . "\n)"
+             . " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        if ($execute) { $db->exec($sql); return null; }
         return $sql;
-    }
-
-    
-    /**
-     * Построить WHERE-часть
-     * @param array $filter
-     * @param array $params
-     * @return string
-     */
-    protected function buildWhere(array|string|null $filter, array &$params): string {
-        if(!$filter) return '';
-        if (is_string($filter)) return " WHERE $filter";
-        $conditions = [];
-        foreach ($filter as $key => $value) {
-            // Оператор по умолчанию
-            $operator = '=';
-
-            // Разделение оператора и поля
-            if (preg_match('/^(.+?)\s+(=|!=|<>|>=|<=|>|<|LIKE|IN|NOT IN|IS NULL|IS NOT NULL)$/i', $key, $matches)) {
-                $field = trim($matches[1]);
-                $operator = strtoupper(trim($matches[2]));
-            } else {
-                $field = $key;
-            }
-
-            // Построение условия
-            switch ($operator) {
-                case 'IN':
-                case 'NOT IN':
-                    if (!is_array($value) || empty($value)) break;
-                    $placeholders = implode(', ', array_fill(0, count($value), '?'));
-                    $conditions[] = "$field $operator ($placeholders)";
-                    $params = array_merge($params, $value);
-                    break;
-
-                case 'IS NULL':
-                case 'IS NOT NULL':
-                    $conditions[] = "$field $operator";
-                    break;
-
-                default:
-                    $conditions[] = "$field $operator ?";
-                    $params[] = $value;
-            }
-        }
-
-        return $conditions ? " WHERE " . implode(" AND ", $conditions) : '';
-    }
-
-    /**
-     * Построить GROUP BY
-     * @param array $group
-     * @return string
-     */
-    protected function buildGroup(array $options): string {
-        if (empty($options['group'])) return '';
-        $group = (array)$options['group'];
-        $this->protector->assertSafeGroup($group);
-        return ' GROUP BY '.implode(', ', $group);
-    }
-    
-    /**
-     * Построить HAVING фильтрует после группировки
-     * @param array $having
-     * @param array $params
-     * @return string
-     */
-    protected function buildHaving(array $options, array &$params): string {
-        $conditions = [];
-
-        foreach ($options['having'] as $key => $value) {
-            $operator = '=';
-            if (preg_match('/^(.+?)\s+(=|!=|<>|>=|<=|>|<|LIKE|IN|NOT IN|IS NULL|IS NOT NULL)$/i', $key, $matches)) {
-                $field = trim($matches[1]);
-                $operator = strtoupper(trim($matches[2]));
-            } else {
-                $field = $key;
-            }
-
-            switch ($operator) {
-                case 'IN':
-                case 'NOT IN':
-                    if (!is_array($value) || empty($value)) break;
-                    $placeholders = implode(', ', array_fill(0, count($value), '?'));
-                    $conditions[] = "$field $operator ($placeholders)";
-                    $params = array_merge($params, $value);
-                    break;
-                default:
-                    $conditions[] = "$field $operator ?";
-                    $params[] = $value;
-            }
-        }
-
-        return $conditions ? ' HAVING ' . implode(' AND ', $conditions) : '';
-    }     
-
-    /**
-     * Построить ORDER BY
-     * @param array $order
-     * @return string
-     */
-    protected function buildOrder(array $options): string {
-        if (empty($options['order'])) return '';
-        if (is_string($options['order'])) {
-            $this->protector->assertSafeOrder($options['order']);
-            return ' ORDER BY '.$options['order'];
-        }
-        // массив ['col1' => 'DESC', 'col2' => 'ASC']
-        $this->protector->assertSafeOrder($options['order']);
-        $clauses = [];
-        foreach ($options['order'] as $field => $dir) {
-            $clauses[] = "$field ".strtoupper($dir ?: 'ASC');
-        }
-        return ' ORDER BY '.implode(', ', $clauses);
-    }
-    
-    /**
-     * Построить LIMIT + OFFSET
-     * @param int $limit
-     * @param int $offset
-     * @return string
-     */
-    protected function buildLimit(array $options): string {
-        if ($options['limit'] <= 0) return '';
-        $limit = (int)$options['limit'];
-        $offset = !empty($options['offset']) ? (int)$options['offset'] : 0;
-        return " LIMIT $limit" . ($offset > 0 ? " OFFSET $offset" : '');
     }
 
     /**

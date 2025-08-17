@@ -45,5 +45,4 @@ $sl = $sl->useAutowiring($f3->get('DI_AUTOWIRING'))
     ->initContainer($containerBuilder);
 $f3->set('CONTAINER',$sl);
 
-$router = $f3->getDI(App\Http\Router::class);
-$f3->initRouter($router);
+$f3->init();

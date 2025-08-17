@@ -33,7 +33,6 @@ return [
         $cache_folder = $f3->g('cache.folder','lib/tmp/cache/');
         $adapter = new FileCacheAdapter($cache_folder);
         $cache = new App\Utils\Cache($adapter);
-        $f3->initCache($cache);
         return $cache;
     }),
     // template()->render()
@@ -41,7 +40,7 @@ return [
     // app()
     ComponentManager::class => create(ComponentManager::class)->constructor(get(F4::class),get(App\Utils\Assets::class)),
     // app()
-    App\App::class => create(App\App::class)->constructor(get(F4::class),get(Utils\Assets::class), get(ComponentManager::class))
+    App\App::class => create(App\App::class)->constructor(get(F4::class),get(App\Utils\Assets::class), get(ComponentManager::class))
 ];
 
 

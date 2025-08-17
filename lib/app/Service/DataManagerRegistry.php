@@ -40,7 +40,7 @@ class DataManagerRegistry
         }
 
         if (!is_a($entityClass, DataEntityInterface::class, true)) {
-            throw new InvalidArgumentException("$entityClass must implement ".DataEntity::class);
+            throw new InvalidArgumentException("$entityClass must implement ".DataEntityInterface::class);
         }
 
         /** @var class-string<DataEntity> $entityClass */

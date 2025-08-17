@@ -42,10 +42,10 @@ class Request
         $this->cli = $cli;
         $this->server = $server;
         $this->query  = $_GET ?? [];
-        $this->post   = $_POST ?? [];
+        $this->post  = $_POST ?? [];
+        $this->files  = $_FILES ?? [];
         $this->request_params  = $_REQUEST ?? [];
         $this->cookies = $_COOKIE ?? [];
-        $this->files   = $_FILES ?? [];
         $this->headers =  $headers;
         $this->ajax = isset($this->headers['X-Requested-With']) &&
             $this->headers['X-Requested-With']=='XMLHttpRequest';
@@ -62,18 +62,26 @@ class Request
     }
 
     // ==== Геттеры данных ====
-
+    public function get(string $key = '', $default=null) { 
+        return $key?($this->request_params[$key] ?? $default):$this->request_params;
+    }
+    public function post(string $key = '', $default=null) { 
+        return $key?($this->post[$key] ?? $default):$this->post; 
+    }
+    public function query(string $key = '', $default=null) { 
+        return $key?($this->query[$key] ?? $default):$this->query; 
+    }
+    public function files(string $key='') { 
+        return $key?($this->files[$key]??null):$this->files; 
+    }
     public function isCli(): bool { return $this->cli; }
     public function isAjax(): bool { return $this->ajax; }
     public function getServer(): array { return $this->server; }
-    public function getQueryParams(): array { return $this->query; }
     public function getQueryStr(): ?string { return $this->query_str; }
-    public function getPostParams(): array { return $this->post; }
     public function getRequestParams(): array { return $this->request_params; }
     public function getCookies(): array { return $this->cookies; }
     public function clientIp(): string { return $this->clientIp; }
     public function getPort(): string { return $this->port; }
-    public function getFiles(): array { return $this->files; }
     public function getHeaders(): array { return $this->headers; }
     public function getHeader(string $name, $default=null) {
         $name = strtolower($name);

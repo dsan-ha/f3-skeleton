@@ -14,9 +14,9 @@ interface DataEntityInterface
      * Карта полей для авто-гидратора.
      * Формат рекомендуемый:
      * [
-     *   'id'    => ['type'=>'int','pkey'=>true,'auto'=>true,'nullable'=>false],
-     *   'email' => ['type'=>'string','nullable'=>false,'len'=>200],
-     *   'meta'  => ['type'=>'json','nullable'=>true],
+     *   'id'    => ['type'=>'int','pkey'=>true],
+     *   'email' => ['type'=>'string','len'=>200,'required'=>false],
+     *   'meta'  => ['type'=>'json'],
      * ]
      */
     public static function getFieldsMap(): array;

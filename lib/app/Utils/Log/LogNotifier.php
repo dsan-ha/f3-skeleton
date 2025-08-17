@@ -20,11 +20,11 @@ class LogNotifier
         $slackWebhookUrl = $f3->g('log_notifier.slack_webhook_url',null);
 
         if (!empty($telegramToken) && !empty($telegramChatId)) {
-            $this->sendToTelegram($message, $telegramToken, $telegramChatId);
+            self::sendToTelegram($message, $telegramToken, $telegramChatId);
         }
 
         if (!empty($slackWebhookUrl)) {
-            $this->sendToSlack($message, $slackWebhookUrl);
+            self::sendToSlack($message, $slackWebhookUrl);
         }
     }
 
@@ -37,13 +37,13 @@ class LogNotifier
             'parse_mode' => 'HTML'
         ];
 
-        $this->httpPost($url, $payload);
+        self::httpPost($url, $payload);
     }
 
     protected function sendToSlack(string $message, string $slackWebhookUrl): void
     {
         $payload = ['text' => $message];
-        $this->httpPost($slackWebhookUrl, $payload);
+        self::httpPost($slackWebhookUrl, $payload);
     }
 
     protected function httpPost(string $url, array $payload): void

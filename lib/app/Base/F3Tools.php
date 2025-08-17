@@ -108,14 +108,10 @@ trait F3Tools {
         return self::$instance;
     }
 
-    function initCache(&$cache)
+    function init()
     {
-        $this->cache = $cache;
-    }
-
-    function cache_init()
-    {
-        return is_object($this->cache);
+        $this->set('ROUTER',$this->getDI(\App\Http\Router::class));
+        $this->cache = $this->getDI(\App\Utils\Cache::class);
     }
 
     function cache_exists(string $key, &$value = null)
@@ -134,7 +130,7 @@ trait F3Tools {
     }
 
     function hasDI(string $id): bool {
-        if((bool)!this->exists('CONTAINER', $c)) return false;
+        if((bool)!$this->exists('CONTAINER', $c)) return false;
         return $c->has($id);
     }
 
@@ -899,80 +895,74 @@ trait F3Tools {
     **/
     function error($code,$text='',?array $trace=NULL,$level=0) {
         $header = @constant('self::HTTP_'.$code);
-        if ($this->hasDI(Request::class) && $this->hasDI(Response::class)) {
-            $request = $this->getDI(Request::class);
-            $response = $this->getDI(Response::class);
-            $prior=$this->hive['ERROR'];
-            $response=$response->withStatus($code);
-            $req=$request->getMethod().' '.$request->getPath();
-            $query=$request->getQueryStr();
-            if ($query)
-                $req.='?'.$query;
-            if (!$text)
-                $text='HTTP '.$code.' ('.$req.')';
-            $trace=$this->trace($trace);
-            $loggable=$this->hive['LOGGABLE'];
-            if (!is_array($loggable))
-                $loggable=$this->split($loggable);
-            foreach ($loggable as $status)
-                if ($status=='*' ||
-                    preg_match('/^'.preg_replace('/\D/','\d',$status).'$/',(string) $code)) {
-                    error_log($text);
-                    foreach (explode("\n",$trace) as $nexus)
-                        if ($nexus)
-                            error_log($nexus);
-                    break;
-                }
-
-            if ($highlight=(!$request->isCli() && !$request->isAjax() &&
-                $this->hive['HIGHLIGHT'] && is_file($css=SITE_ROOT.'/'.self::CSS)))
-                $trace=$this->highlight($trace);
-            $this->hive['ERROR']=[
-                'status'=>$header,
-                'code'=>$code,
-                'text'=>$text,
-                'trace'=>$trace,
-                'level'=>$level
-            ];
-            //$res = $this->expire($request, $response, -1);
-            $handler=$this->hive['ONERROR'];
-            $this->hive['ONERROR']=NULL;
-            $eol="\n";
-            if ((!$handler ||
-                $this->call($handler,[$this,$this->hive['PARAMS']],
-                    'beforeroute,afterroute')===FALSE) &&
-                !$prior && !$this->hive['QUIET']) {
-                $error=array_diff_key(
-                    $this->hive['ERROR'],
-                    $this->hive['DEBUG']?
-                        []:
-                        ['trace'=>1]
-                );
-                if ($request->isCli())
-                    $body = PHP_EOL.'==================================='.PHP_EOL.
-                        'ERROR '.$error['code'].' - '.$error['status'].PHP_EOL.
-                        $error['text'].PHP_EOL.PHP_EOL.(isset($error['trace']) ? $error['trace'] : '');
-                else
-                    $body = $request->isAjax()?
-                        json_encode($error):
-                        ('<!DOCTYPE html>'.$eol.
-                        '<html>'.$eol.
-                        '<head>'.
-                            '<title>'.$code.' '.$header.'</title>'.
-                            ($highlight?
-                                ('<style>'.$this->read($css).'</style>'):'').
-                        '</head>'.$eol.
-                        '<body>'.$eol.
-                            '<h1>'.$header.'</h1>'.$eol.
-                            '<p>'.$this->encode($text?:$req).'</p>'.$eol.
-                            ($this->hive['DEBUG']?('<pre>'.$trace.'</pre>'.$eol):'').
-                        '</body>'.$eol.
-                        '</html>');
-                $response = $response->withBody($body);
+        $request = Environment::instance()->getRequest();
+        $prior=$this->hive['ERROR'];
+        http_response_code($code);
+        $req=$request->getMethod().' '.$request->getPath();
+        $query=$request->getQueryStr();
+        if ($query)
+            $req.='?'.$query;
+        if (!$text)
+            $text='HTTP '.$code.' ('.$req.')';
+        $trace=$this->trace($trace);
+        $loggable=$this->hive['LOGGABLE'];
+        if (!is_array($loggable))
+            $loggable=$this->split($loggable);
+        foreach ($loggable as $status)
+            if ($status=='*' ||
+                preg_match('/^'.preg_replace('/\D/','\d',$status).'$/',(string) $code)) {
+                error_log($text);
+                foreach (explode("\n",$trace) as $nexus)
+                    if ($nexus)
+                        error_log($nexus);
+                break;
             }
-            $response->send($request->isCli());
-        } else {
-            $this->error_min($code,$text,$trace,$level);
+
+        if ($highlight=(!$request->isCli() && !$request->isAjax() &&
+            $this->hive['HIGHLIGHT'] && is_file($css=SITE_ROOT.'/'.self::CSS)))
+            $trace=$this->highlight($trace);
+        $this->hive['ERROR']=[
+            'status'=>$header,
+            'code'=>$code,
+            'text'=>$text,
+            'trace'=>$trace,
+            'level'=>$level
+        ];
+        //$res = $this->expire($request, $response, -1);
+        $handler=$this->hive['ONERROR'];
+        $this->hive['ONERROR']=NULL;
+        $eol="\n";
+        if ((!$handler ||
+            $this->call($handler,[$this,$this->hive['PARAMS']],
+                'beforeroute,afterroute')===FALSE) &&
+            !$prior && !$this->hive['QUIET']) {
+            $error=array_diff_key(
+                $this->hive['ERROR'],
+                $this->hive['DEBUG']?
+                    []:
+                    ['trace'=>1]
+            );
+            if ($request->isCli())
+                $body = PHP_EOL.'==================================='.PHP_EOL.
+                    'ERROR '.$error['code'].' - '.$error['status'].PHP_EOL.
+                    $error['text'].PHP_EOL.PHP_EOL.(isset($error['trace']) ? $error['trace'] : '');
+            else
+                $body = $request->isAjax()?
+                    json_encode($error):
+                    ('<!DOCTYPE html>'.$eol.
+                    '<html>'.$eol.
+                    '<head>'.
+                        '<title>'.$code.' '.$header.'</title>'.
+                        ($highlight?
+                            ('<style>'.$this->read($css).'</style>'):'').
+                    '</head>'.$eol.
+                    '<body>'.$eol.
+                        '<h1>'.$header.'</h1>'.$eol.
+                        '<p>'.$this->encode($text?:$req).'</p>'.$eol.
+                        ($this->hive['DEBUG']?('<pre>'.$trace.'</pre>'.$eol):'').
+                    '</body>'.$eol.
+                    '</html>');
+            echo $body;
         }
         if ($this->hive['HALT'])
             die(1);
