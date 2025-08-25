@@ -12,8 +12,8 @@ $f3 = App\F4::instance();
 $definitions = [];
 
 $paths = [
-    '/lib/data',   // ядро
-    '/local/data', // локальные переопределения
+    'lib/data',   // ядро
+    'local/data', // локальные переопределения
 ];
 
 $files = ['services.yaml', '.definitions.php']; //файлы с зависимостями

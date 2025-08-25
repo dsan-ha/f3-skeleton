@@ -83,7 +83,7 @@ abstract class BaseComponent {
 
         foreach ($roots as $root) {
             $uriPath =  trim($root, '/\\') . '/' . ltrim($path, '/\\');
-            $path = SITE_ROOT . '/' . $uriPath;
+            $path = SITE_ROOT . $uriPath;
             if (is_file($path) || is_dir($path)) {
                 return $uri?('/'.$uriPath):$path;
             }

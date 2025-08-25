@@ -38,7 +38,7 @@ abstract class DataManager {
     }
 
     public function logSQL(){
-        return $this->db->log();
+        return str_replace(PHP_EOL, '<br>', $this->db->log());
     }
 
     /**
@@ -136,7 +136,7 @@ abstract class DataManager {
      * @return array|null
      */
     public function getById(int $id): object|array|null {
-        $options = ['where' => ['id =' => $id], 'limit' => 1];
+        $options = ['where' => ['=id' => $id], 'limit' => 1];
         $cursor = $this->getList($options);
         return $cursor->first(); // DTO или массив — зависит от getDtoClass()
     }

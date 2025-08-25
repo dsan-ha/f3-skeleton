@@ -8,12 +8,12 @@ class FileCacheAdapter implements CacheInterface
 {
     protected string $baseDir;
 
-    public function __construct(string $baseDir = null)
+    public function __construct(string $baseDir)
     {
         if($baseDir){
-            $this->baseDir = rtrim($baseDir) . '/';
+            $this->baseDir = rtrim($baseDir,'/ ') . '/';
         } else {
-            $this->baseDir = SITE_ROOT.rtrim(F4::instance()->g('cache.folder','lib/tmp/cache/'));
+           throw new \Exception("Don use folder cache"); 
         }
     }
 

@@ -14,7 +14,7 @@ final class EventManager
     private F4 $f3;
 
     public function __construct(F4 $f3) {
-        $this->f3 = $f3
+        $this->f3 = $f3;
     }
 
     public function addEventHandler(

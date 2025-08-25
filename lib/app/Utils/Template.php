@@ -122,7 +122,7 @@ class Template
         $roots = $hive ? explode(',', $hive) : [];
 
         foreach ($roots as $root) {
-            $file = SITE_ROOT . '/' . trim($root, '/\\') . '/' . ltrim($template, '/\\');
+            $file = SITE_ROOT . trim($root, '/\\') . '/' . ltrim($template, '/\\');
             if (is_file($file)) {
                 return $file;
             } else {
@@ -142,11 +142,12 @@ class Template
         $fw = $this->f3;
         $real = realpath($file);
         $paths = explode(',',$this->uiPaths);
-        $uri_file = substr($file, strlen(SITE_ROOT));
+        $root = rtrim(SITE_ROOT, '/');
+        $uri_file = substr($file, strlen($root));
         $find = false;
         if($real !== false){
             foreach ($paths as $key => $path) {
-                $p = SITE_ROOT . '/' . ltrim($path, '/\\');
+                $p = $root . '/' . ltrim($path, '/\\');
                 if(str_starts_with($file, $p)){
                     $find = true;
                 } 

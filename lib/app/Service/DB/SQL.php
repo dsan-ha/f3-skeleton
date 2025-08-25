@@ -132,6 +132,7 @@ class SQL {
 	*	@param $stamp bool
 	**/
 	function exec($cmds,$args=NULL,$ttl=0,$log=TRUE,$stamp=FALSE) {
+		$fw=F4::instance();
 		$tag='';
 		if (is_array($ttl))
 			list($ttl,$tag)=$ttl;
@@ -156,7 +157,6 @@ class SQL {
 		}
 		if ($this->log===FALSE)
 			$log=FALSE;
-		$fw=F4::instance();
 		$result=FALSE;
 		for ($i=0;$i<$count;++$i) {
 			$cmd=$cmds[$i];
@@ -377,7 +377,7 @@ class SQL {
 				'FIELD','TYPE','DEFVAL','NULLABLE','Y','PKEY','P']
 		];
 		if (is_string($fields))
-			$fields=F4::instance()->split($fields);
+			$fields=$fw->split($fields);
 		$conv=[
 			'int\b|integer'=>\PDO::PARAM_INT,
 			'bool'=>\PDO::PARAM_BOOL,

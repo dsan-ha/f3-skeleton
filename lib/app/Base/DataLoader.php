@@ -27,8 +27,8 @@ class DataLoader
     {
         if(!defined('SITE_ROOT')) throw new \Exception("Main path Defines don't define");
         $folders = [
-            '/lib/data', 
-            '/local/data'
+            'lib/data', 
+            'local/data'
         ];
         foreach ($folders as $relPath) {
             foreach (self::$order as $file) {

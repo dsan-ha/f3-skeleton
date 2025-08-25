@@ -8,6 +8,7 @@ use App\Service\Hydrator\HydratorInterface;
 
 final class QueryBuilder
 {
+
     public function __construct(
         private SQL $db,                  // твой адаптер Fat-Free DB\SQL
         private string  $table,               // имя таблицы (с алиасом при желании)
@@ -17,6 +18,36 @@ final class QueryBuilder
     ) {
         $this->pk ??= $this->detectPk($this->fieldsMap);
     }
+
+    //допустимые операторы
+    private static function get_op_map(){
+        return [
+            '='        => fn($f,$v) => ["{$f} = ?",               [$v]],
+            '!='       => fn($f,$v) => ["{$f} <> ?",              [$v]],
+            '>'        => fn($f,$v) => ["{$f} > ?",               [$v]],
+            '>='       => fn($f,$v) => ["{$f} >= ?",              [$v]],
+            '<'        => fn($f,$v) => ["{$f} < ?",               [$v]],
+            '<='       => fn($f,$v) => ["{$f} <= ?",              [$v]],
+            'LIKE'     => fn($f,$v) => ["{$f} LIKE ?",            [$v]],
+            'ILIKE'    => fn($f,$v) => ["{$f} ILIKE ?",           [$v]],
+            'IN'       => fn($f,$v) => (function($f,$v){
+                $v = is_array($v)?array_values($v):[$v];
+                if (!$v) return ["1=0", []];
+                return ["{$f} IN (".str_repeat('?,',count($v)-1).'?)', $v];
+            })($f,$v),
+            'NOTIN'    => fn($f,$v) => (function($f,$v){
+                $v = is_array($v)?array_values($v):[$v];
+                if (!$v) return ["1=1", []];
+                return ["{$f} NOT IN (".str_repeat('?,',count($v)-1).'?)', $v];
+            })($f,$v),
+            'BETWEEN'  => fn($f,$v) => (function($f,$v){
+                if (!is_array($v) || count($v)!==2) throw new \InvalidArgumentException("BETWEEN needs [from,to]");
+                return ["{$f} BETWEEN ? AND ?", [$v[0],$v[1]]];
+            })($f,$v),
+            'ISNULL'   => fn($f,$v) => ["{$f} IS NULL",           []],
+            'NOTNULL'  => fn($f,$v) => ["{$f} IS NOT NULL",       []],
+        ]; 
+    } 
 
     public function setHydrator(HydratorInterface $hydrator): void { $this->hydrator = $hydrator; }
 
@@ -185,72 +216,78 @@ final class QueryBuilder
     }
 
     private function buildHaving(array $options, array &$params): string {
-        $conditions = [];
+        $sql = $this->compileWhere($options['having'], $params);
+        if(!empty($sql) && strpos($sql, 'WHERE') !== false) $sql = str_replace('WHERE', 'HAVING', $sql);
 
-        foreach ($options['having'] as $key => $value) {
-            $operator = '=';
-            if (preg_match('/^(.+?)\s+(=|!=|<>|>=|<=|>|<|LIKE|IN|NOT IN|IS NULL|IS NOT NULL)$/i', $key, $matches)) {
-                $field = trim($matches[1]);
-                $operator = strtoupper(trim($matches[2]));
-            } else {
-                $field = $key;
-            }
-
-            switch ($operator) {
-                case 'IN':
-                case 'NOT IN':
-                    if (!is_array($value) || empty($value)) break;
-                    $placeholders = implode(', ', array_fill(0, count($value), '?'));
-                    $conditions[] = "$field $operator ($placeholders)";
-                    $params = array_merge($params, $value);
-                    break;
-                default:
-                    $conditions[] = "$field $operator ?";
-                    $params[] = $value;
-            }
-        }
-
-        return $conditions ? ' HAVING ' . implode(' AND ', $conditions) : '';
+        return $sql;
     }     
 
     private function compileWhere(array|string|null $filter, array &$params): string {
-        if ($filter===null || $filter==='') return '';
-        if (is_string($filter)) return " WHERE $filter";
-
-        $conditions = [];
-        foreach ($filter as $expr=>$value) {
-            // Оператор по умолчанию
-            $operator = '=';
-
-            // Разделение оператора и поля
-            if (preg_match('/^(.+?)\s+(=|!=|<>|>=|<=|>|<|LIKE|IN|NOT IN|IS NULL|IS NOT NULL)$/i', $expr, $matches)) {
-                $field = trim($matches[1]);
-                $operator = strtoupper(trim($matches[2]));
-            } else {
-                $field = $expr;
-            }
-
-            // Построение условия
-            switch ($operator) {
-                case 'IN':
-                case 'NOT IN':
-                    if (!is_array($value) || empty($value)) break;
-                    $placeholders = implode(', ', array_fill(0, count($value), '?'));
-                    $conditions[] = "$field $operator ($placeholders)";
-                    $params = array_merge($params, $value);
-                    break;
-
-                case 'IS NULL':
-                case 'IS NOT NULL':
-                    $conditions[] = "$field $operator";
-                    break;
-
-                default:
-                    $conditions[] = "$field $operator ?";
-                    $params[] = $value;
-            }
+        $parts = $this->normalizeFilter($filter);
+        if (!$parts) return '';
+        $sql = ' WHERE '.implode(' AND ', array_column($parts,'sql'));
+        $args = [];
+        foreach ($parts as $p) {
+            if (!empty($p['args'])) { array_push($args, ...$p['args']); }
         }
-        return $conditions ? ' WHERE ' . implode(' AND ', $conditions) : '';
+        array_push($params, ...$args);
+        return $sql;
+    }
+
+    private function normalizeFilter(array|string|null $filter): array {
+        if ($filter === null || $filter === '') return [];
+        // допускаем строку как «сырой SQL» (оставьте по желанию)
+        if (is_string($filter)) return [['sql'=>$filter, 'args'=>[]]];
+
+        $out = [];
+        foreach ($filter as $key => $val) {
+            // поддержка "сырого условия" массивом: ['raw' => ['u.deleted = 0', []]]
+            if ($key === 'raw') {
+                $sql = is_array($val) ? ($val[0] ?? '') : (string)$val;
+                $args = is_array($val) ? ($val[1] ?? []) : [];
+                if ($sql) $out[] = ['sql'=>$sql, 'args'=>$args];
+                continue;
+            }
+
+            [$op,$field] = $this->parseKey((string)$key);
+            $op = strtoupper($op);
+            $op_map = self::get_op_map();
+            if (!isset($op_map[$op])) {
+                throw new \InvalidArgumentException("Unsupported operator: {$op}");
+            }
+
+            // маппинг поля по fieldsMap (если у тебя есть алиасы)
+            $column = $this->fieldsMap[$field]['column'] ?? $field;
+
+            // ISNULL/NOTNULL игнорируют значение
+            if (in_array($op, ['ISNULL','NOTNULL'], true)) {
+                [$sql,$args] = ($op_map[$op])($column, null);
+            } else {
+                [$sql,$args] = ($op_map[$op])($column, $val);
+            }
+            $out[] = ['sql'=>$sql, 'args'=>$args];
+        }
+        return $out;
+    }
+
+    private function parseKey(string $raw): array {
+        // варианты:
+        // "=user_id"          -> op "=",   field "user_id"
+        // "LIKE@name"         -> op "LIKE",field "name"
+        // "name"              -> op "=",   field "name" (по умолчанию)
+        // "NOTIN@u.id"        -> op "NOTIN",field "u.id"
+        $raw = trim($raw);
+
+        // a) "OP@field"
+        if (preg_match('/^([A-Z]+)@(.+)$/u', $raw, $m)) {
+            return [strtoupper($m[1]), trim($m[2])];
+        }
+        // b) "=field" / ">=field" / "!=field" и т.п.
+        if (preg_match('/^([=!<>]{1,2})(.+)$/u', $raw, $m)) {
+            return [strtoupper($m[1]), trim($m[2])];
+        }
+        // c) fallback: только поле -> "="
+        return ['=', $raw];
     }
 
     private function detectPk(array $map): ?string {

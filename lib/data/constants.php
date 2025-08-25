@@ -2,4 +2,4 @@
 use App\F4;
 $f3=F4::instance();
 
-define('UPLOAD_DIR',SITE_ROOT.'/upload/'); 
+define('UPLOAD_DIR',SITE_ROOT.'upload/'); 

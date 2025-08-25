@@ -26,7 +26,7 @@ class F4
      */
     public function run()
     {
-        $router = $this->get('ROUTER') ?? throw new \RuntimeException(self::E_Router);
+        $router = $this->get('Router') ?? throw new \RuntimeException(self::E_Router);
         if ($router->blacklisted($this->ip()))
             // Spammer detected
             $this->error(403);
@@ -34,7 +34,7 @@ class F4
     }
 
     public function route($pattern,$handler,$ttl=0,$kbps=0){
-        $router = $this->get('ROUTER') ?? throw new \RuntimeException(self::E_Router);
+        $router = $this->get('Router') ?? throw new \RuntimeException(self::E_Router);
         if (is_array($pattern)) {
             foreach ($pattern as $item)
                 $this->route($item,$handler,$ttl,$kbps);
@@ -45,7 +45,7 @@ class F4
     }
 
     public function reroute($url=NULL,$permanent=FALSE,$die=TRUE) {
-        $router = $this->get('ROUTER') ?? throw new \RuntimeException(self::E_Router);
+        $router = $this->get('Router') ?? throw new \RuntimeException(self::E_Router);
         $router->reroute($url,$permanent,$die);
     }
 
@@ -94,7 +94,7 @@ class F4
      */
     public function add(callable $handler)
     {
-        $router = $this->get('ROUTER') ?? throw new \RuntimeException(self::E_Router);
+        $router = $this->get('Router') ?? throw new \RuntimeException(self::E_Router);
         $router->addMiddleware($handler);
     }
 

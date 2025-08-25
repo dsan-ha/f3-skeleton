@@ -31,7 +31,7 @@ class Assets
         ];
         $params = array_merge($def, $params);
         $s = substr($path, 0, 1);
-        $f_path = SITE_ROOT . $path;
+        $f_path = SITE_ROOT . ltrim($path,'/');
         if ($s == '/' || $s == '.') {
             if (self::SHOW_ERROR && !is_file($f_path)) {
                 throw new \Exception("Error not found file css " . $path, 1);
@@ -55,7 +55,7 @@ class Assets
         ];
         $params = array_merge($def, $params);
         $s = substr($path, 0, 1);
-        $f_path = SITE_ROOT . $path;
+        $f_path = SITE_ROOT . ltrim($path,'/');
         if (($s == '/' || $s == '.')) {
             if (self::SHOW_ERROR && !is_file($f_path)) {
                 throw new \Exception("Error not found file js " . $path, 1);

@@ -110,8 +110,9 @@ trait F3Tools {
 
     function init()
     {
-        $this->set('ROUTER',$this->getDI(\App\Http\Router::class));
+        $this->set('Router',$this->getDI(\App\Http\Router::class));
         $this->cache = $this->getDI(\App\Utils\Cache::class);
+        $this->set('EventManager',$this->getDI(\App\Events\EventManager::class));
     }
 
     function cache_exists(string $key, &$value = null)
@@ -765,7 +766,7 @@ trait F3Tools {
     **/
     function status($code, $res=null, $send = false) {
         $reason=@constant('self::HTTP_'.$code);
-        if ($this->hasDI(Response::class)) {
+        if (false && $this->hasDI(Response::class)) {
             /** @var Response $res */
             if(!is_object($res))
                 $res = $this->getDI(Response::class);
@@ -919,7 +920,7 @@ trait F3Tools {
             }
 
         if ($highlight=(!$request->isCli() && !$request->isAjax() &&
-            $this->hive['HIGHLIGHT'] && is_file($css=SITE_ROOT.'/'.self::CSS)))
+            $this->hive['HIGHLIGHT'] && is_file($css=SITE_ROOT.self::CSS)))
             $trace=$this->highlight($trace);
         $this->hive['ERROR']=[
             'status'=>$header,
