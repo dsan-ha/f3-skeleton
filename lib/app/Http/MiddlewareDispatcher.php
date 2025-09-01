@@ -3,15 +3,15 @@
 namespace App\Http;
 
 class MiddlewareDispatcher {
-    private $queue = [];
+    private $stack = [];
 
     public function add(callable $middleware) {
-        $this->queue[] = $middleware;
+        $this->stack[] = $middleware;
         return $this;
     }
 
     public function dispatch($req, $res, array $params, callable $finalHandler) {
-        $stack = array_reverse($this->queue);
+        $stack = array_reverse($this->stack);
         $next = $finalHandler;
 
         foreach ($stack as $middleware) {
@@ -23,7 +23,7 @@ class MiddlewareDispatcher {
         return $next($req, $res, $params);
     }
 
-    public function getQueue(){
-        return $this->queue;
+    public function all(){
+        return $this->stack;
     }
 }

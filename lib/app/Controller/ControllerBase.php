@@ -2,32 +2,32 @@
 
 namespace App\Controller;
 
-use App\App;
 use App\F4;
-use App\Utils\Template;
+use App\Http\Response;
 
 abstract class ControllerBase
 {
-    protected App $app; 
     protected F4 $f3;
-
-    abstract protected function middleware(): void;
-    abstract protected function afterRender(array $arParams): void;
-    abstract protected function initController(): void;
 
     public function __construct()
     {
-        $arParams = [];
         $this->f3 = F4::instance();
-        $this->app = app();
-        $this->initController();
-        $this->middleware();
     }
 
-    public function render(array $arParams = [])
+    protected function beforeRoute($req, Response $res, array $params): bool 
+    { 
+        return true; //Возвращаем false если есть ошибка
+    } 
+
+    protected function render(Response $res, string $pageTemplate, array $arParams = [])
     {
-        echo $this->app->render($arParams);
-        $this->afterRender($arParams);
+        $app = app();
+        $app->setContent('body',$pageTemplate);
+        $html = $app->render($arParams);          
+        return $res->withBody($html);  
     }
+
+    protected function afterRoute($req, Response $res, array $params): void 
+    {}
     
 }

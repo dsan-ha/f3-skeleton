@@ -934,8 +934,7 @@ trait F3Tools {
         $this->hive['ONERROR']=NULL;
         $eol="\n";
         if ((!$handler ||
-            $this->call($handler,[$this,$this->hive['PARAMS']],
-                'beforeroute,afterroute')===FALSE) &&
+            $this->call($handler,[$this,$this->hive['PARAMS']])===FALSE) &&
             !$prior && !$this->hive['QUIET']) {
             $error=array_diff_key(
                 $this->hive['ERROR'],
@@ -1059,7 +1058,7 @@ trait F3Tools {
     *   @param $args string
     *   @param $hooks string
     **/
-    function call($func,$args=NULL,string $hooks='') {
+    function call($func,$args=NULL) {
         if (!is_array($args))
             $args=[$args];
         // Grab the real handler behind the string representation
@@ -1086,43 +1085,11 @@ trait F3Tools {
             $func[0] = $this->resolveFromContainer($func[0]);
         }
 
-        $hooks = $this->split($hooks);
         $obj = is_object($func[0]);
-
-        // 405 If method not allowed / not callable
-        if (!$obj || !is_callable($func)) {
-            if ($hooks === 'beforeroute,afterroute' || (is_array($hooks) && implode(',', $hooks) === 'beforeroute,afterroute')) {
-                $allowed = [];
-                if ($obj) {
-                    $allowed = array_intersect(
-                        array_map('strtoupper', get_class_methods($func[0])),
-                        explode('|', self::VERBS)
-                    );
-                }
-                header('Allow: ' . implode(',', $allowed));
-                $this->error(405);
-            } else {
-                user_error(sprintf(self::E_Method, $this->stringify($func)), E_USER_ERROR);
-            }
-        }
-
-        // before hook
-        if ($obj && $hooks && in_array($hook='beforeroute', $hooks, true)
-            && method_exists($func[0], $hook)
-            && call_user_func_array([$func[0], $hook], $args) === FALSE) {
-            return FALSE;
-        }
 
         // main call
         $out = call_user_func_array($func, $args ?: []);
         if ($out === FALSE) return FALSE;
-
-        // after hook
-        if ($obj && $hooks && in_array($hook='afterroute', $hooks, true)
-            && method_exists($func[0], $hook)
-            && call_user_func_array([$func[0], $hook], $args) === FALSE) {
-            return FALSE;
-        }
 
         return $out;
     }
@@ -1134,7 +1101,7 @@ trait F3Tools {
      * @param array $args
      * @return object
      */
-    protected function resolveFromContainer(string $class) {
+    function resolveFromContainer(string $class) {
         if (!isset($this->hive['CONTAINER'])) {
             user_error(sprintf(self::E_Container, $class), E_USER_ERROR);
         }

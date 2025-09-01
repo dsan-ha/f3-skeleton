@@ -47,8 +47,10 @@ class Request
         $this->request_params  = $_REQUEST ?? [];
         $this->cookies = $_COOKIE ?? [];
         $this->headers =  $headers;
-        $this->ajax = isset($this->headers['X-Requested-With']) &&
-            $this->headers['X-Requested-With']=='XMLHttpRequest';
+        $this->ajax = (isset($this->headers['X-Requested-With']) && 
+               $this->headers['X-Requested-With'] == 'XMLHttpRequest') ||
+              (isset($server['HTTP_X_REQUESTED_WITH']) && 
+               $server['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest');
         $this->body    = $rawBody;
         $this->method = $method;
         $this->port = $port;

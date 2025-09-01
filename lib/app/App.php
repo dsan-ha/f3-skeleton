@@ -72,12 +72,12 @@ final class App
 	public function render(array $arParams = []){
 		$template = template();
 		$template->afterrender([$this, 'renderBuffer'],$this->layout);
-        echo $template->render($this->layout,$arParams);
+        return $template->render($this->layout,$arParams);
 	}
 
-	public function content($val){
+	public function content(string $val){
 		$content = $this->f3->get('content');
-		if(is_array($content) && isset($content[$val])){
+		if($val && is_array($content) && isset($content[$val])){
 			return $content[$val];
 		} else {
 			$this->f3->set('block_not_found',$val);

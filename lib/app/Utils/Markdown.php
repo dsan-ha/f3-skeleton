@@ -30,7 +30,7 @@ class Markdown {
 	**/
 	protected function _pre($str) {
 		$str=preg_replace('/(?<=^|\n)(?: {4}|\t)(.+?(?:\n+|$))/','\1',
-			$this->esc($str));
+			$str);
 		return strlen($str)?
 			('<pre><code>'.
 				$this->esc($this->snip($str)).
@@ -287,8 +287,8 @@ class Markdown {
 				// List
 				if ($first) {
 					// First pass
-					if (is_numeric($match[1]))
-						$type='ol';
+					if (preg_match('/^\d+\.$/', $match[1])) 
+						$type = 'ol';
 					if (preg_match('/\n{2,}$/',$match[2].
 						($found?'':$match[3])))
 						// Loose structure; Use paragraphs
@@ -305,6 +305,8 @@ class Markdown {
 				else
 					$tmp=$this->build($tmp);
 				$dst.='<li>'.$this->scan(trim($tmp)).'</li>'."\n";
+			} else {
+				break;
 			}
 		}
 		return strlen($dst)?
@@ -360,26 +362,35 @@ class Markdown {
 	*	@param $str string
 	**/
 	protected function _text($str) {
-		$tmp='';
-		while ($str!=$tmp)
-			$str=preg_replace_callback(
-				'/(?<=\s|^)(?<!\\\\)([*_])([*_]?)([*_]?)(.*?)(?!\\\\)\3\2\1(?=[\s[:punct:]]|$)/',
-				function($expr) {
-					if ($expr[3])
-						return '<strong><em>'.$expr[4].'</em></strong>';
-					if ($expr[2])
-						return '<strong>'.$expr[4].'</strong>';
-					return '<em>'.$expr[4].'</em>';
-				},
-				preg_replace(
-					'/(?<!\\\\)~~(.*?)(?!\\\\)~~(?=[\s[:punct:]]|$)/',
-					'<del>\1</del>',
-					$tmp=$str
-				)
-			);
-		return $str;
-	}
+    	$prev = null;
+	    while ($prev !== $str) {
+	        $prev = $str;
 
+	        // ~~strike~~ (не экранировано слева и справа)
+	        $str = preg_replace(
+	            '/(?<!\\\\)~~(.*?)(?<!\\\\)~~(?=(?:\s|\p{P}|\z))/u',
+	            '<del>$1</del>',
+	            $str
+	        );
+
+	        // *em*, **strong**, ***strong+em*** и та же логика для _
+	        // Требуем один и тот же символ и то же количество при закрытии.
+	        $str = preg_replace_callback(
+	            '/(?<!\S)(?<!\\\\)(\*{1,3}|_{1,3})(.+?)(?<!\\\\)\1(?=(?:\s|\p{P}|\z))/u',
+	            function ($m) {
+	                $marks = $m[1];
+	                $text  = $m[2];
+	                $n = strlen($marks);
+	                if ($n === 3) return '<strong><em>' . $text . '</em></strong>';
+	                if ($n === 2) return '<strong>' . $text . '</strong>';
+	                return '<em>' . $text . '</em>';
+	            },
+	            $str
+	        );
+	    }
+	    return $str;
+	}
+	
 	/**
 	*	Process image span
 	*	@return string
@@ -454,6 +465,7 @@ class Markdown {
 			$str
 		);
 	}
+
 
 	/**
 	*	Convert characters to HTML entities

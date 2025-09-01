@@ -15,4 +15,7 @@ class RoutesCollection{
         }
         return $this;
     }
+
+    /** @return Route[] */
+    public function all(): array { return $this->routes; }
 }

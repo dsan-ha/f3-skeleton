@@ -7,6 +7,9 @@ use App\Http\Response;
 use App\Http\Request;
 
 class Router {
+    protected array $groups = [];
+    protected ?RouterGroups $currentGroup = null;
+
     const
         VERBS='GET|HEAD|POST|PUT|PATCH|DELETE|CONNECT|OPTIONS';
 
@@ -16,6 +19,7 @@ class Router {
         E_Alias='Invalid named route alias: %s',
         E_Onreroute='Router ONREROUTE method busy',
         E_Handler = 'Invalid route handler. Use either [$className, $method] or a callable function.',
+        E_Response='Invalid response: expected instanceof Response',
         E_Routes='No routes specified';
 
     const
@@ -38,8 +42,8 @@ class Router {
         $this->res = $res;
         $this->globalMiddleware = new MiddlewareDispatcher();
         $base = $f3->get('BASE');
-        $uri = $f3->get('URI');
-        if (PHP_SAPI=='cli-server' &&
+        $uri = $req->getUri();
+        if ($req->isCli() &&
             preg_match('/^'.preg_quote($base,'/').'$/',$uri))
             $this->reroute('/');
     }
@@ -83,58 +87,25 @@ class Router {
     }
 
     /**
-    *   Mock HTTP request
+    *   Mock HTTP request ЗАГЛУШКА
     *   @return mixed
     *   @param $pattern string
     *   @param $args array
     *   @param $headers array
     *   @param $body string
     **/
-    function mock($pattern,
-        ?array $args=NULL,?array $headers=NULL,$body=NULL) {
-        $f3 = $this->f3;
-        if (!$args)
-            $args=[];
-        $types=['sync','ajax','cli'];
-        preg_match('/([\|\w]+)\h+(?:@(\w+)(?:(\(.+?)\))*|([^\h]+))'.
-            '(?:\h+\[('.implode('|',$types).')\])?/',$pattern,$parts);
-        $verb=strtoupper($parts[1]);
-        if ($parts[2]) {
-            if (empty($this->aliases[$parts[2]]))
-                user_error(sprintf(self::E_Named,$parts[2]),E_USER_ERROR);
-            $parts[4]=$this->aliases[$parts[2]];
-            $parts[4]=$this->build($parts[4],
-                isset($parts[3])?$this->f3->parse($parts[3]):[]);
+    function dispatch(F4 $f3, Request $req, Response $res): Response {
+        $this->f3 = $f3;
+        $this->globalMiddleware = new MiddlewareDispatcher();
+        $prevReq = $this->req; $prevRes = $this->res;
+        try {
+            $this->req = $req;
+            $this->res = $res;
+            return $this->run();
+        } finally {
+            $this->req = $prevReq;
+            $this->res = $prevRes;
         }
-        if (empty($parts[4]))
-            user_error(sprintf(self::E_Pattern,$pattern),E_USER_ERROR);
-        $url=parse_url($parts[4]);
-        parse_str(isset($url['query'])?$url['query']:'',$GLOBALS['_GET']);
-        if (preg_match('/GET|HEAD/',$verb))
-            $GLOBALS['_GET']=array_merge($GLOBALS['_GET'],$args);
-        $GLOBALS['_POST']=$verb=='POST'?$args:[];
-        $GLOBALS['_REQUEST']=array_merge($GLOBALS['_GET'],$GLOBALS['_POST']);
-        foreach ($headers?:[] as $key=>$val)
-            $_SERVER['HTTP_'.strtr(strtoupper($key),'-','_')]=$val;
-        $f3->set('VERB',$verb);
-        $f3->set('PATH',$url['path']);
-        $f3->set('URI',$f3->get('BASE').$url['path']);
-        $uri = $f3->get('URI');
-        if ($GLOBALS['_GET'])
-            $uri.='?'.http_build_query($GLOBALS['_GET']);
-        $f3->set('URI', $uri);
-        $b='';
-        if (!preg_match('/GET|HEAD/',$verb)){
-            $b=$body?:http_build_query($args);
-        }
-        $f3->set('BODY', $b);
-        $ajax=isset($parts[5]) &&
-            preg_match('/ajax/i',$parts[5]);
-        $cli=isset($parts[5]) &&
-            preg_match('/cli/i',$parts[5]);
-        $f3->set('AJAX',$ajax);
-        $f3->set('CLI',$cli);
-        return $this->f3->run();
     }
 
     /**
@@ -152,12 +123,22 @@ class Router {
         if (isset($parts[2]) && $parts[2]) {
             if (!preg_match('/^\w+$/',$parts[2]))
                 user_error(sprintf(self::E_Alias,$parts[2]),E_USER_ERROR);
-            $this->aliases[$alias=$parts[2]]=$parts[3];
+            $ctx = $this->currentGroup();
+            if ($ctx) {
+                $parts[3] = Route::joinPath($ctx->chainPrefix(), $parts[3]);
+            }
+            $alias = $parts[2];
+            $chain = ($ctx)?$ctx->chainPrefix():'';
+            $this->aliases[$alias] = [
+                'url' => $parts[3],
+                'group' => $chain,
+            ];
         }
         elseif (!empty($parts[4])) {
             if (empty($this->aliases[$parts[4]]))
-                user_error(sprintf(self::E_Named,$parts[4]),E_USER_ERROR);
-            $parts[3]=$this->aliases[$alias=$parts[4]];
+            user_error(sprintf(self::E_Named,$parts[4]),E_USER_ERROR);
+            $alias = $parts[4];
+            $parts[3] = $this->aliases[$alias]['url'];
         }
         if (empty($parts[3]))
             user_error(sprintf(self::E_Pattern,$pattern),E_USER_ERROR);
@@ -170,16 +151,65 @@ class Router {
         if (!is_callable($handler) && !$validArrayForm) {
             user_error(self::E_Handler, E_USER_ERROR);
         }
+
+        $ctx = $this->currentGroup();
+        if ($ctx && empty($parts[2])) {
+            $parts[3] = Route::joinPath($ctx->chainPrefix(), $parts[3]);
+        } 
+
         $routes = new RoutesCollection();
         $uri = $this->f3->get('URI');
         foreach ($this->f3->split($parts[1]) as $verb) {
             if (!preg_match('/'.self::VERBS.'/',$verb))
                 $this->f3->error(501,$verb.' '.$uri);
-            $route = new Route([$handler,$ttl,$kbps,$alias]);
+            $chain = ($ctx)?$ctx->chainPrefix():'';
+
+            $route = new Route([
+                'handler'=>$handler,
+                'ttl' => $ttl,
+                'kbps' => $kbps,
+                'alias' => $alias,
+                'type' => $type,
+                'verb' => strtoupper($verb),
+                'group' => $chain
+            ]);
+            // навешиваем мидлварь группы на каждый роут
+            if ($ctx) {
+                $ctx->flagMW(); //Добавляем флаг что middleware нельзя больше добавлять
+                foreach ($ctx->middlewares() as $mw) { $route->addMiddleware($mw); }
+            }
             $this->routes[$parts[3]][$type][strtoupper($verb)] = &$route;
             $routes->addRoute($route);
         }
         return $routes;
+    }
+
+    public function group($chainUrlGroup = ''): RouterGroups
+    {
+        $this->currentGroup = new RouterGroups($this, $chainUrlGroup);
+        $chain = $this->currentGroup->chainPrefix();
+        if($chain && !in_array($chain, $this->groups) ){
+            $this->groups[] = $chain;
+        }
+        return $this->currentGroup;
+    }
+
+    public function clearGroup(RouterGroups $g): void {
+        if ($this->currentGroup === $g) {
+            $this->currentGroup = null;
+        }
+    }
+
+    public function currentGroup(): ?RouterGroups { return $this->currentGroup; }
+
+    /**
+    * Вспомогательный метод: смонтировать уже собранную коллекцию в роутер
+    */
+    public function mount(RoutesCollection $collection): void
+    {
+        foreach ($collection->all() as $route) {
+            $this->registerRoute($route);
+        }
     }
 
     public function addMiddleware(callable $mw) {
@@ -200,7 +230,7 @@ class Router {
             $params=$this->f3->parse($params);
         if (empty($this->aliases[$name]))
             user_error(sprintf(self::E_Named,$name),E_USER_ERROR);
-        $url=$this->build($this->aliases[$name],$params);
+        $url=$this->build($this->aliases[$name]['url'],$params);
         if (is_array($query))
             $query=http_build_query($query);
         return $url.($query?('?'.$query):'').($fragment?'#'.$fragment:'');
@@ -220,7 +250,7 @@ class Router {
             $url=call_user_func_array([$this,'alias'],$url);
         elseif (preg_match('/^(?:@([^\/()?#]+)(?:\((.+?)\))*(\?[^#]+)*(#.+)*)/',
             $url,$parts) && isset($this->aliases[$parts[1]]))
-            $url=$this->build($this->aliases[$parts[1]],
+            $url=$this->build($this->aliases[$parts[1]]['url'],
                     isset($parts[2])?$this->f3->parse($parts[2]):[]).
                 (isset($parts[3])?$parts[3]:'').(isset($parts[4])?$parts[4]:'');
         else
@@ -365,10 +395,11 @@ class Router {
                         ($query?('?'.$query):''));
                 $fullMiddleware = clone $this->globalMiddleware;
                 $cur_route = $route[$verb];
-                foreach ($cur_route->middleware->getQueue() as $mw) {
+                foreach ($cur_route->middleware->all() as $mw) {
                     $fullMiddleware->add($mw);
                 }
-                list($handler,$ttl,$kbps,$alias)=$cur_route->getParams();
+                $p = $cur_route->getParams();
+                list($handler,$ttl,$kbps,$alias)=[$p['handler'],$p['ttl'],$p['kbps'],$p['alias']];
                 // Capture values of route pattern tokens
                 $f3->set('PARAMS',$args);
                 // Save matching route
@@ -390,14 +421,16 @@ class Router {
                         $hash=$f3->hash($verb.' '.
                             $uri).'.url',$data);
                     if ($cached) {
-                        if (isset($headers['If-Modified-Since']) &&
-                            strtotime($headers['If-Modified-Since'])+
+                        $mod_since = $req->getHeader('If-Modified-Since');
+                        if (isset($mod_since) &&
+                            strtotime($mod_since)+
                                 $ttl>$now) {
                             $f3->status(304);
                             die;
                         }
                         // Retrieve from cache backend
                         list($headers,$body,$result)=$data;
+                        user_error('Кэш страниц нужно переделывать проблема с пробросом заголовков и вообще он не доделан', E_USER_ERROR);
                         if (!$cli)
                             array_walk($headers,'header');
                         $res = $f3->expire($req, $res, $cached[0]+$ttl-$now);
@@ -412,10 +445,16 @@ class Router {
                     ob_start();
                     $final = function () use ($args, $handler, $f3, $req, &$res) {
                         // Новый контракт контроллеров: ($req, $res, $params) 
-                        return $f3->call($handler, [$req, $res, $args], 'beforeroute,afterroute');
+                        return $this->invokeHandler($handler, $req, $res, $args);
                     };
                     $result = $fullMiddleware->dispatch($req, $res, $args, $final);
-                    $body   = ob_get_clean();
+                    $body = ob_get_clean(); // должен быть пустым
+                    if ($result instanceof Response) {
+                        $body .= $result->getBody();
+                    } else {
+                        user_error(self::E_Response, E_USER_ERROR);
+                    }
+                    
                     if (isset($cache) && !error_get_last()) {
                         // Save to cache backend
                         $f3->cache_set($hash,[
@@ -428,15 +467,31 @@ class Router {
                 if (!$f3->get('QUIET')) {
                     if ($kbps) {
                         // Если нужен троттлинг — выводим частями
+                        // kbps = KB/s
+                        $bytesPerSec = max(1, (int)$kbps) * 1024;
+                        $chunk = 8192;
+                        $sent=0; 
+                        $now=microtime(true);
                         $buffer = '';
-                        $ctr=0; $now=microtime(true);
-                        foreach (str_split($body,1024) as $part) {
-                            $ctr; $buffer .= $part;
-                            if ($ctr/$kbps > ($elapsed=microtime(true)-$now) && !connection_aborted()) {
-                                usleep((int)round(1e6*($ctr/$kbps-$elapsed)));
+                        $len = strlen($body);
+                        $this->res = $res->withBody(''); // пустое тело, будем писать вручную
+                        $this->res->send($cli);   // если у тебя есть отдельная отправка заголовков
+                        for ($off = 0; $off < $len; $off += $chunk) {
+                            if (connection_aborted()) break;
+                            $part = substr($body, $off, $chunk);
+                            $buffer .= $part;
+
+                            echo $part;
+                            if (function_exists('ob_flush')) ob_flush();
+                            flush();
+
+                            $sent += strlen($part);
+                            $expected = $sent/$bytesPerSec;
+                            if ($expected > ($elapsed=microtime(true)-$now)) {
+                                usleep((int)round(1e6*($expected-$elapsed)));
                             }
                         }
-                        $res = $res->withBody($buffer);
+                        return;
                     } else {
                         $res = $res->withBody($body);
                     }
@@ -504,4 +559,56 @@ class Router {
             user_error(self::E_Onreroute,E_USER_ERROR);
         $this->hive['ONREROUTE'] = $handler;
     }
+
+    // Внутри class Router
+    private function invokeHandler($handler, $req, Response $res, array $params): Response
+    {
+        // 1) Callable-функции/замыкания
+        if (is_callable($handler) && !is_array($handler)) {
+            $out = call_user_func($handler, $req, $res, $params);
+            // Разрешаем экшенам возвращать либо Response, либо строку/скаляр
+            if ($out instanceof Response) {
+                return $out;
+            } elseif (is_string($out)) {
+                return $res->withBody($out);
+            } else {
+                user_error(self::E_Response, E_USER_ERROR);
+            }
+        }
+
+        // 2) [$classOrObj, 'method']
+        if (is_array($handler) && count($handler) === 2) {
+            [$target, $method] = $handler;
+
+            if (is_string($target)) {
+                $target = $this->f3->resolveFromContainer($target);
+            }
+
+            // Жизненный цикл: beforeAction → action → afterAction
+            if (method_exists($target, 'beforeRoute') && is_callable([$target, 'beforeRoute'])) {
+                $ok = $target->beforeRoute($req, $res, $params);
+                if ($ok === false) {
+                    return $res; // прерываем обработку
+                }
+            }
+
+            $out = call_user_func([$target, $method], $req, $res, $params);
+
+            if (method_exists($target, 'afterRoute') && is_callable([$target, 'afterRoute'])) {
+                $target->afterRoute($req, $res, $params);
+            }
+
+            if ($out instanceof Response) {
+                return $out;
+            } else if (is_string($out)) {
+                return $res->withBody($out);
+            }
+            user_error(self::E_Response, E_USER_ERROR);
+        }
+
+        // Неподдерживаемый формат
+        user_error('Invalid handler: expected callable or [$class,$method]', E_USER_ERROR);
+        return $res;
+    }
+
 }

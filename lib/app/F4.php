@@ -44,6 +44,12 @@ class F4
         }
     }
 
+    public function group($chainUrlGroup = ''){
+        $router = $this->get('Router') ?? throw new \RuntimeException(self::E_Router);
+        return $router->group($chainUrlGroup);
+    }
+
+
     public function reroute($url=NULL,$permanent=FALSE,$die=TRUE) {
         $router = $this->get('Router') ?? throw new \RuntimeException(self::E_Router);
         $router->reroute($url,$permanent,$die);
