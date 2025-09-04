@@ -15,12 +15,12 @@ $f3 = F4::instance();
 $UIpaths = $f3->g('UI','ui/');
 
 return [
+    Environment::class => DI\factory(function () {
+        return Environment::instance();
+    }),
     F4::class => DI\factory(function () {
         $f3 = F4::instance();
         return $f3;
-    }),
-    Environment::class => DI\factory(function () {
-        return Environment::instance();
     }),
     //route('route_str',$handler($request,$response,$params))
     App\Http\Response::class => create(App\Http\Response::class),

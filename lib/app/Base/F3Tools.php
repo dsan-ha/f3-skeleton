@@ -86,6 +86,11 @@ trait F3Tools {
         E_Method='Invalid method %s',
         E_Hive='Invalid hive key %s';
     //@}
+        
+    /**
+     * @var F4|null — синглтон-обёртка
+     */
+    protected static $instance = null;
 
     private
         //! Globals
@@ -150,66 +155,6 @@ trait F3Tools {
     private function cut($key) {
         return preg_split('/\[\h*[\'"]?(.+?)[\'"]?\h*\]|(->)|\./',
             $key,-1,PREG_SPLIT_NO_EMPTY|PREG_SPLIT_DELIM_CAPTURE);
-    }
-
-    /**
-    *   Convert JS-style token to PHP expression
-    *   @return string
-    *   @param $str string
-    *   @param $evaluate bool compile expressions as well or only convert variable access
-    **/
-    function compile($str, $evaluate=TRUE) {
-        return (!$evaluate)
-            ? preg_replace_callback(
-                '/^@(\w+)((?:\..+|\[(?:(?:[^\[\]]*|(?R))*)\])*)/',
-                function($expr) {
-                    $str='$'.$expr[1];
-                    if (isset($expr[2]))
-                        $str.=preg_replace_callback(
-                            '/\.([^.\[\]]+)|\[((?:[^\[\]\'"]*|(?R))*)\]/',
-                            function($sub) {
-                                $val=isset($sub[2]) ? $sub[2] : $sub[1];
-                                if (ctype_digit($val))
-                                    $val=(int)$val;
-                                $out='['.$this->export($val).']';
-                                return $out;
-                            },
-                            $expr[2]
-                        );
-                    return $str;
-                },
-                $str
-            )
-            : preg_replace_callback(
-            '/(?<!\w)@(\w+(?:(?:\->|::)\w+)?)'.
-            '((?:\.\w+|\[(?:(?:[^\[\]]*|(?R))*)\]|(?:\->|::)\w+|\()*)/',
-            function($expr) {
-                $str='$'.$expr[1];
-                if (isset($expr[2]))
-                    $str.=preg_replace_callback(
-                        '/\.(\w+)(\()?|\[((?:[^\[\]]*|(?R))*)\]/',
-                        function($sub) {
-                            if (empty($sub[2])) {
-                                if (ctype_digit($sub[1]))
-                                    $sub[1]=(int)$sub[1];
-                                $out='['.
-                                    (isset($sub[3])?
-                                        $this->compile($sub[3]):
-                                        $this->export($sub[1])).
-                                ']';
-                            }
-                            else
-                                $out=function_exists($sub[1])?
-                                    $sub[0]:
-                                    ('['.$this->export($sub[1]).']'.$sub[2]);
-                            return $out;
-                        },
-                        $expr[2]
-                    );
-                return $str;
-            },
-            $str
-        );
     }
 
     /**
@@ -430,13 +375,8 @@ trait F3Tools {
             }
         }
         
-        $val=preg_replace('/^(\$hive)/','$this->hive',
-            $this->compile('@hive.'.$key, FALSE));
-        if (!$this->isSafeUnsetExpr($val)) {
-            // можно логировать сюда попытку небезопасного выражения
-            return false;
-        }
-        eval('unset('.$val.');');
+        
+        if(isset($this->hive[$key])) unset($this->hive[$key]);
         if ($parts[0]=='SESSION') {
             session_commit();
             session_start();
@@ -445,37 +385,6 @@ trait F3Tools {
             // Remove from cache
             $cache->clear($hash,self::Cache_folder);
         
-    }
-
-    /**
-     *   $this->hive['a']['b'][0]->c
-     * Разрешены только цепочки индексов и свойств.
-     */
-    private function isSafeUnsetExpr(string $compiledLval): bool {
-        // быстрые отбойники
-        $s = trim($compiledLval);
-        if ($s === '' || strlen($s) > 512) return false;
-        if (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $s)) return false;
-
-        // должен начинаться с $this->hive или $hive
-        if (strpos($s, '$this->hive') === 0) {
-            $tail = substr($s, strlen('$this->hive'));
-        } elseif (strpos($s, '$hive') === 0) {
-            $tail = substr($s, strlen('$hive'));
-        } else {
-            return false;
-        }
-
-        // никаких «опасных» символов в целом выражении
-        if (preg_match('/[;`&|^~!?<>=:+*\/%\\\(){}]/', $s)) return false;
-
-        // допускаем только последовательность: [индекс|ключ] или ->prop, без пробелов
-        // индекс: число ИЛИ простая строка в одинар/двойных кавычках без экранирования
-        if ($tail === '') return true;
-        return (bool)preg_match(
-            '/^(?:\[(?:\d+|\'[A-Za-z0-9_.-]+\'|"[A-Za-z0-9_.-]+")\]|->[A-Za-z_][A-Za-z0-9_]*)+$/u',
-            $tail
-        );
     }
 
     /**
@@ -1356,6 +1265,15 @@ trait F3Tools {
                 }
             }
         );
+        
+        // Снимок окружения и нормализация
+        Environment::init(function (Environment $env) {
+            // Тут же можно задать доверенные прокси/хосты:
+            /*$env->setTrustedProxies(['127.0.0.1','10.0.0.0/8'])
+                ->setTrustedHosts(['^oasis\\.local$', '^md\\.local$'])
+                ->honorForwarded(true, true);*/
+        }, readBody: true);
+
         $cli = PHP_SAPI=='cli';
         $base='/';
         if (!$cli)
@@ -1409,13 +1327,6 @@ trait F3Tools {
             'UPLOADS'=>'./',
             'XFRAME'=>'SAMEORIGIN'
         ];
-        // Снимок окружения и нормализация (всё, что раньше делали в bootstrap, теперь внутри Environment)
-        Environment::init(function (Environment $env) {
-            // Тут же можно задать доверенные прокси/хосты:
-            /*$env->setTrustedProxies(['127.0.0.1','10.0.0.0/8'])
-                ->setTrustedHosts(['^oasis\\.local$', '^md\\.local$'])
-                ->honorForwarded(true, true);*/
-        }, readBody: true);
 
         
 

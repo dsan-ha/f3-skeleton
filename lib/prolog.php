@@ -8,5 +8,8 @@ if ((float)PCRE_VERSION<7.9)
 $f3 = App\F4::instance();
 // Load configuration
 $f3->config('lib/config.yaml');
-
-App\Base\DataLoader::loadOrdered();
+try {  
+    App\Base\DataLoader::loadOrdered();
+} catch (Exception $e) {
+    $f3->error(500,$e->getMessage(),$e->getTraceAsString());
+}

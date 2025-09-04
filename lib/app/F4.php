@@ -6,6 +6,7 @@ use App\Utils\Scheduler;
 use Symfony\Component\Yaml\Yaml;
 use Symfony\Component\Yaml\Exception\ParseException;
 use App\Base\F3Tools;
+use App\Http\Response;
 
 
 class F4
@@ -16,10 +17,6 @@ class F4
      */
     protected static $fw = null;
 
-    /**
-     * @var F4|null — синглтон-обёртка
-     */
-    protected static $instance = null;
 
     /**
      * 
@@ -147,19 +144,15 @@ class F4
 
     /**
     *   json answer
-    *   @return void
+    *   @return Response
     **/
-    public function json($answer, int $statusCode = 200, array $headers = [], int $jsonOptions = JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR): void
+    public function json(Response $res, $answer, int $statusCode = 200, array $headers = [], int $jsonOptions = JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR): Response
     {
-        http_response_code($statusCode);
-        header('Content-Type: application/json; charset=utf-8');
         if(!empty($headers)){
-            foreach ($headers as $h) {
-                header($h);
+            foreach ($headers as $name => $h) {
+                $res = $res->withHeader($name, $h);
             }
         }
-        
-        echo json_encode($answer, $jsonOptions);
-        exit();
+        return $res->withStatus($statusCode)->withHeader('Content-Type','application/json; charset=utf-8')->withBody(json_encode($answer, $jsonOptions));
     }
 }

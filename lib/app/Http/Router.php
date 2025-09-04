@@ -43,9 +43,9 @@ class Router {
         $this->globalMiddleware = new MiddlewareDispatcher();
         $base = $f3->get('BASE');
         $uri = $req->getUri();
-        if ($req->isCli() &&
+        /*if ($req->isCli() &&
             preg_match('/^'.preg_quote($base,'/').'$/',$uri))
-            $this->reroute('/');
+            $this->reroute('/');*/
     }
 
     /**
