@@ -19,9 +19,11 @@ class FileCacheAdapter implements CacheInterface
 
     protected function getPath(string $key, string $folder): string
     {
-        $safeFolder = preg_replace('/[^a-zA-Z0-9_\-]/', '', $folder);
-        $safeKey = preg_replace('/[^a-zA-Z0-9_\-]/', '', $key);
-        $dir = $this->baseDir . $safeFolder . '/';
+        $safeFolder = preg_replace('/[^\/a-zA-Z0-9_\-]/', '', str_replace("\\",'/',$folder));
+        $safeKey =  str_replace("\\",'/',preg_replace('/[^a-zA-Z0-9_\-]/', '', $key));
+        $dir = $this->baseDir;
+        if($safeFolder)
+            $dir .= trim($safeFolder,'/') . '/';
 
         if (!is_dir($dir)) {
             mkdir($dir, 0777, true);

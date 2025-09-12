@@ -19,7 +19,7 @@ class ApcCacheAdapter implements CacheInterface
 
     protected function makeKey(string $key, string $folder): string
     {
-        $safeFolder = preg_replace('/[^a-zA-Z0-9_\-]/', '', $folder);
+        $safeFolder = preg_replace('/[^a-zA-Z0-9_\-]/', '', str_replace("\\/",'_',$folder));
         $safeKey = preg_replace('/[^a-zA-Z0-9_\-]/', '', $key);
         return $safeFolder . '.' . $safeKey;
     }

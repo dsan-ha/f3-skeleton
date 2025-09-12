@@ -15,6 +15,12 @@ class Cache implements CacheInterface
         $this->adapter = $adapter;
     }
 
+    public function add(string $key, $value, int $ttl = 30): bool {
+        if ($this->has($key)) return false;
+        $this->set($key, '', $value, $ttl);
+        return true;
+    }
+
     public function set(string $key, string $folder, $value, int $ttl = 0): bool
     {
         return $this->adapter->set($key, $folder, $value, $ttl);

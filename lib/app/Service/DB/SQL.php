@@ -127,15 +127,11 @@ class SQL {
 	*	@return array|int|FALSE
 	*	@param $cmds string|array
 	*	@param $args string|array
-	*	@param $ttl int|array
 	*	@param $log bool
 	*	@param $stamp bool
 	**/
-	function exec($cmds,$args=NULL,$ttl=0,$log=TRUE,$stamp=FALSE) {
+	function exec($cmds,$args=NULL,$log=TRUE,$stamp=FALSE) {
 		$fw=F4::instance();
-		$tag='';
-		if (is_array($ttl))
-			list($ttl,$tag)=$ttl;
 		$auto=FALSE;
 		if (is_null($args))
 			$args=[];
@@ -170,23 +166,7 @@ class SQL {
 				continue;
 			$now=microtime(TRUE);
 			$keys=$vals=[];
-			if ($ttl && ($cached=$fw->cache_exists(
-				$hash=$fw->hash($this->dsn.$cmd.
-				$fw->stringify($arg)).($tag?'.'.$tag:'').'.sql',$result)) &&
-				$cached[0]+$ttl>microtime(TRUE)) {
-				foreach ($arg as $key=>$val) {
-					$vals[]=$fw->stringify(is_array($val)?$val[0]:$val);
-					$keys[]='/'.preg_quote(is_numeric($key)?chr(0).'?':$key).
-						'/';
-				}
-				if ($log)
-					$this->log.=($stamp?(date('r').' '):'').'('.
-						sprintf('%.1f',1e3*(microtime(TRUE)-$now)).'ms) '.
-						'[CACHED] '.
-						preg_replace($keys,$vals,
-							str_replace('?',chr(0).'?',$cmd),1).PHP_EOL;
-			}
-			elseif (is_object($query=$this->pdo->prepare($cmd))) {
+			if (is_object($query=$this->pdo->prepare($cmd))) {
 				foreach ($arg as $key=>$val) {
 					if (is_array($val)) {
 						// User-specified data type
@@ -233,9 +213,6 @@ class SQL {
 								$result[$pos][trim($key,'\'"[]`')]=$val;
 						}
 					$this->rows=count($result);
-					if ($ttl)
-						// Save to cache backend
-						$fw->cache_set($hash,$result,$ttl);
 				}
 				else
 					$this->rows=$result=$query->rowcount();
@@ -293,15 +270,9 @@ class SQL {
 	*	@return array|FALSE
 	*	@param $table string
 	*	@param $fields array|string
-	*	@param $ttl int|array
 	**/
-	function schema($table,$fields=NULL,$ttl=0) {
+	function schema($table,$fields=NULL) {
 		$fw=F4::instance();
-		if ($ttl &&
-			($cached=$fw->cache_exists(
-				$hash=$fw->hash($this->dsn.$table.(is_array($fields) ? implode(',',$fields) : $fields)).'.schema',$result)) &&
-			$cached[0]+$ttl>microtime(TRUE))
-			return $result;
 		if (strpos($table,'.'))
 			list($schema,$table)=explode('.',$table);
 		// Supported engines
@@ -410,9 +381,6 @@ class SQL {
 									) : NULL,
 							];
 					}
-				if ($ttl)
-					// Save to cache backend
-					$fw->cache_set($hash,$rows,$ttl);
 				return $rows;
 			}
 		user_error(sprintf(self::E_PKey,$table),E_USER_ERROR);

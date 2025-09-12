@@ -61,7 +61,7 @@ class DataManagerProtector
                 $this->assertSafeIdentifier($join['table'], 'join table');
             }
             if (!empty($join['on']) && preg_match('/[^a-zA-Z0-9_\.=\s]/', $join['on'])) {
-                throw new InvalidArgumentException("Suspicious JOIN ON clause: {$join['on']} examle");
+                throw new InvalidArgumentException("Suspicious JOIN ON clause: {$join['on']} example");
             }
         }
     }

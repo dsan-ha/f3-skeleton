@@ -257,44 +257,58 @@ class Markdown {
 	*	@param $str string
 	**/
 	protected function _li($str) {
-	    $len = strlen($str);
-	    $ptr = 0;
-	    $dst = '';
-	    $tight = TRUE;
-	    $currentType = null;
-
-	    while ($ptr < $len) {
-	        if (preg_match('/(?<=^|\n)([*+\-]|\d+\.)\h(.+?(?:\n+|$))((?:(?: {4}|\t)+.+?(?:\n+|$))*)/s',
-	            substr($str, $ptr), $match)) {
-
-	            $ptr += strlen($match[0]);
-
-	            // Определяем новый тип
-	            $newType = preg_match('/^\d+\.$/', $match[1]) ? 'ol' : 'ul';
-
-	            // Если сменился тип — закрываем предыдущий список
-	            if ($currentType && $newType !== $currentType) {
-	                $dst = '<' . $currentType . ">\n" . $dst . '</' . $currentType . ">\n\n";
-	                // выводим сразу и сбрасываем накопленное
-	                $this->output[] = $dst;
-	                $dst = '';
-	            }
-
-	            $currentType = $newType;
-
-	            $tmp = $this->snip($match[2] . $match[3]);
-	            $dst .= '<li>' . $this->scan(trim($tmp)) . "</li>\n";
-
-	        } else {
-	            break;
-	        }
-	    }
-
-	    if ($currentType && strlen($dst)) {
-	        return '<' . $currentType . ">\n" . $dst . '</' . $currentType . ">\n\n";
-	    }
-
-	    return '';
+		// Initialize list parser
+		$len=strlen($str);
+		$ptr=0;
+		$dst='';
+		$first=TRUE;
+		$tight=TRUE;
+		$type='ul';
+		// Main loop
+		while ($ptr<$len) {
+			if (preg_match('/^\h*[*\-](?:\h?[*\-]){2,}(?:\n+|$)/',
+				substr($str,$ptr),$match)) {
+				$ptr+=strlen($match[0]);
+				// Embedded horizontal rule
+				return (strlen($dst)?
+					('<'.$type.'>'."\n".$dst.'</'.$type.'>'."\n\n"):'').
+					'<hr />'."\n\n".$this->build(substr($str,$ptr));
+			}
+			elseif (preg_match('/(?<=^|\n)([*+\-]|\d+\.)\h'.
+				'(.+?(?:\n+|$))((?:(?: {4}|\t)+.+?(?:\n+|$))*)/s',
+				substr($str,$ptr),$match)) {
+				$match[3]=preg_replace('/(?<=^|\n)(?: {4}|\t)/','',$match[3]);
+				$found=FALSE;
+				foreach (array_slice($this->blocks,0,-1) as $regex)
+					if (preg_match($regex,$match[3])) {
+						$found=TRUE;
+						break;
+					}
+				// List
+				if ($first) {
+					// First pass
+					if (is_numeric($match[1]))
+						$type='ol';
+					if (preg_match('/\n{2,}$/',$match[2].
+						($found?'':$match[3])))
+						// Loose structure; Use paragraphs
+						$tight=FALSE;
+					$first=FALSE;
+				}
+				// Strip leading whitespaces
+				$ptr+=strlen($match[0]);
+				$tmp=$this->snip($match[2].$match[3]);
+				if ($tight) {
+					if ($found)
+						$tmp=$match[2].$this->build($this->snip($match[3]));
+				}
+				else
+					$tmp=$this->build($tmp);
+				$dst.='<li>'.$this->scan(trim($tmp)).'</li>'."\n";
+			}
+		}
+		return strlen($dst)?
+			('<'.$type.'>'."\n".$dst.'</'.$type.'>'."\n\n"):'';
 	}
 
 

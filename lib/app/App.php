@@ -24,8 +24,9 @@ final class App
 		$this->setDefault();
 	}
 
-	public function setMeta(array $meta){ 	
-		$this->meta = array_merge($this->meta,$meta);
+	public function setMeta($key, $val){ 	
+		if(empty($val)) unset($this->meta[$key]);
+		$this->meta[$key] = $val;
 	}
 
 	public function getMeta($key, $def = ''){

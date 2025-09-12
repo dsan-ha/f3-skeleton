@@ -5,6 +5,7 @@ use App\Utils\Cache\FileCacheAdapter;
 use App\Component\ComponentManager;
 use App\Events\EventManager;
 use App\Http\Environment;
+use App\Service\DataManagerRegistry;
 use function DI\autowire;
 use function DI\create;
 use function DI\get;

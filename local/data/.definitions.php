@@ -1,6 +1,7 @@
 <?php if(!defined('SITE_ROOT')) exit();
 use App\Service;
 use App\Service\DB\SQL;
+use App\Service\DataManagerRegistry;
 use function DI\autowire;
 use function DI\create;
 use function DI\get;
@@ -12,6 +13,7 @@ $pass = $f3->get('db.pass');
 
 return [
     SQL::class => create(SQL::class)->constructor($dsn, $user, $pass),
+    DataManagerRegistry::class => autowire(DataManagerRegistry::class)
 ];
 
 

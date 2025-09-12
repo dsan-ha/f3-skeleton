@@ -6,6 +6,8 @@ use App\Service\DataManagerProtector;
 use App\Service\DB\SQL;
 use App\Service\DB\Cursor;
 use App\Service\DB\QueryBuilder;
+use App\Utils\Cache as BaseCache;
+use App\Service\DB\Cache as DBCache;
 use App\Service\Hydrator\HydratorInterface;
 
 /**
@@ -19,6 +21,7 @@ use App\Service\Hydrator\HydratorInterface;
 abstract class DataManager {
     protected SQL $db;
     protected F4 $f3;
+    protected DBCache $cache;
     protected QueryBuilder $qb;
     protected HydratorInterface $hydrator;
     protected DataManagerProtector $protector;
@@ -27,10 +30,11 @@ abstract class DataManager {
      * @param SQL $db экземпляр базы данных
      * @param F4 $f3 экземпляр фреймворка
      */
-    public function __construct(SQL $db, F4 $f3, HydratorInterface $hydrator) {
+    public function __construct(SQL $db, F4 $f3, HydratorInterface $hydrator,BaseCache $cache ) {
         $this->db = $db;
         $this->f3 = $f3;
         $this->hydrator = $hydrator;
+        $this->cache = new DBCache($cache);
         $this->protector = $f3->getDI(DataManagerProtector::class);
         $fieldsMap = static::getFieldsMap();
         $table     = static::getTableName();
@@ -135,10 +139,14 @@ abstract class DataManager {
      * @param int $id
      * @return array|null
      */
-    public function getById(int $id): object|array|null {
-        $options = ['where' => ['=id' => $id], 'limit' => 1];
-        $cursor = $this->getList($options);
-        return $cursor->first(); // DTO или массив — зависит от getDtoClass()
+    public function getById(int $id, array $cache = []): object|array|null {
+        $tags = ['tbl:'.static::getTableName(), 'id:'.$id];
+        $options = ['where' => ['=id'=>$id], 'limit'=>1];
+        $key  = !empty($cache['key']) ? $cache['key'] : $this->buildKeyFromBacktrace($options);
+        $cur = $this->cacheRemember($cache, function() use ($options) {
+            return $this->qb->find($options);
+        },$key,$tags);
+        return $cur->first();
     }
 
     /**
@@ -148,11 +156,23 @@ abstract class DataManager {
 
      */
     public function getList(
-        array $options = []
+        array $options = [],
+        array $cache = []
     ): Cursor {
-        $options = $options ?? [];
         $this->protector->assertSafeSelect($options);
-        return $this->qb->find($options);
+        $tags = ['tbl:'.static::getTableName()];
+        $key  = !empty($cache['key']) ? $cache['key'] : $this->buildKeyFromBacktrace($options);
+        return $this->cacheRemember($cache, function() use ($options) {
+            return $this->qb->find($options);
+        }, $key, $tags);
+    }
+
+    public function count(array $options=[], array $cache=[]): int {
+        $tags = ['tbl:'.static::getTableName()];
+        $key  = !empty($cache['key']) ? $cache['key'] : $this->buildKeyFromBacktrace($options);
+        return $this->cacheRemember($cache, function() use ($options) {
+            return $this->qb->count($options);
+        }, $key, $tags);
     }
 
     /**
@@ -161,9 +181,29 @@ abstract class DataManager {
      * @param array $params параметры для плейсхолдеров ?
      * @return array[]
      */
-    public function getRaw(string $sql, array $params = []): array {
+    public function getRaw(string $sql, array $params = [], array $cache = []): array {
         $this->protector->assertReadOnlyQuery($sql);
-        return $this->db->exec($sql, $params);
+        $tags = ['tbl:'.static::getTableName()]; 
+        $key  = $cache['key'] ?? $this->buildKeyFromBacktrace($params);
+        return $this->cacheRemember($cache, fn()=> $this->db->exec($sql,$params), $key, $tags);
+    }
+
+    private function cacheRemember(array $cache, callable $producer, string $key, array $tags = []) {
+        $this->normalizeCache($cache);            // ваш метод нормализации
+        $ttl  = (int)($cache['ttl'] ?? 0);
+        $tags = array_unique(array_merge($tags, $cache['tags'] ?? []));
+        return $this->cache->remember($key, $ttl, $tags, $producer);
+    }
+
+    // Инвалидация по тэгам из write-путей
+    private function invalidateByTables(array $tables): void {
+        $tags = array_map(fn($t) => "tbl:".$t, $tables);
+        $this->cache->invalidateTags($tags);
+    }
+
+    private function buildKeyFromBacktrace($args = []): string {
+        // стабильно хешируем «кто/с чем» вызвал
+        return 'dm:'.static::class.':'.$this->f3->hash(json_encode($args).'|'.json_encode(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3)));
     }
 
     /**
@@ -175,7 +215,9 @@ abstract class DataManager {
         $data = $this->filterKnown($data);
         $this->validate($data, false);
         if (!$data) return null;
-        return $this->qb->insert($data); // вернёт lastInsertId
+        $id = $this->qb->insert($data);
+        if ($id) $this->invalidateByTables([static::getTableName()]);
+        return $id; // вернёт lastInsertId
     }
 
     /**
@@ -188,9 +230,14 @@ abstract class DataManager {
         $data = $this->filterKnown($data);
         $this->validate($data, true);
         if (!$data) return 0;
-        return $this->qb->update($id, $data); // affected rows
+        $aff = $this->qb->update($id, $data);
+        if ($aff) { 
+            $this->invalidateByTables([static::getTableName()]); 
+            $this->cache->invalidateTag('id:'.$id); 
+        }
+        return $aff; // affected rows
     }
-    
+
     /**
      * Удаляет запись по ID
      * @param int $id
@@ -198,7 +245,12 @@ abstract class DataManager {
      */
     public function delete(int $id,string $key = 'id'): bool {
         $key .= ' = ?';
-        return $this->qb->erase([$key => $id]) > 0;
+        $ok = $this->qb->erase([$key => $id]) > 0;
+        if ($ok) { 
+            $this->invalidateByTables([static::getTableName()]); 
+            $this->cache->invalidateTag('id:'.$id); 
+        }
+        return $ok;
     }
 
     /**
@@ -259,6 +311,19 @@ abstract class DataManager {
              . " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
         if ($execute) { $db->exec($sql); return null; }
         return $sql;
+    }
+    
+    /**
+     * Нормализация массива кэша
+     * @param array $cache
+     * @return array
+     */
+    public function normalizeCache(array &$cache): void {
+        $def = [
+            'ttl'=>0, // сек, 0 = без кэша
+            'type'=>'N' //Тип кэша
+        ];
+        $cache = array_merge($def,$cache);
     }
 
     /**

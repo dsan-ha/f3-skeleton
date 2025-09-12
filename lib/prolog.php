@@ -11,5 +11,5 @@ $f3->config('lib/config.yaml');
 try {  
     App\Base\DataLoader::loadOrdered();
 } catch (Exception $e) {
-    $f3->error(500,$e->getMessage(),$e->getTraceAsString());
+    $f3->error(500,$e->getMessage());
 }

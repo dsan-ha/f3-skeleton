@@ -5,13 +5,13 @@ use App\Utils\Assets;
 $f3 = App\F4::instance();
 $app = app();
 $assets = assets();
-$assets->addCss('/ui/css/normalize.min.css');
-$assets->addCss('/ui/css/fontawesome.min.css');
-$assets->addCss('/ui/css/pure.css');
-$assets->addCss('/ui/css/base.css');
-$assets->addCss('/ui/css/code.css');
+$assets->addCss('/ui/css/d/normalize.min.css');
+$assets->addCss('/ui/css/d/fontawesome.min.css');
+$assets->addCss('/ui/css/d/pure.css');
+$assets->addCss('/ui/css/d/base.css');
+$assets->addCss('/ui/css/d/code.css');
 $assets->addCss('/ui/css/style.css');
-$assets->addJs('/ui/js/jquery-3.4.1.min.js');
+$assets->addJs('/ui/js/d/jquery-3.4.1.min.js');
 $assets->addJs('/ui/js/main.js');?>
 <!DOCTYPE html>
 <html lang="ru">

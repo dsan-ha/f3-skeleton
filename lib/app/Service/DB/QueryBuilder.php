@@ -69,9 +69,8 @@ final class QueryBuilder
         return new Cursor($out);
     }
 
-    public function count(array|string|null $filter=null, ?array $options=null): int
+    public function count(array $options=[]): int
     {
-        $options = $options ?? [];
         unset($options['order'],$options['limit']);
         $options['select'] = ['COUNT(*) AS cnt'];
         [$sql, $args] = $this->buildSelect($options);

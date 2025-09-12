@@ -21,7 +21,7 @@ class MemcachedCacheAdapter implements CacheInterface
 
     protected function makeKey(string $key, string $folder): string
     {
-        return preg_replace('/[^a-zA-Z0-9_\-]/', '', $folder) . '.' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $key);
+        return preg_replace('/[^a-zA-Z0-9_\-]/', '', str_replace("\\/",'_',$folder)) . '.' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $key);
     }
 
     public function set(string $key, string $folder, $value, int $ttl = 0): bool

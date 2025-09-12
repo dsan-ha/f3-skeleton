@@ -6,7 +6,8 @@ use App\F4;
 use App\Service\DB\SQL;
 use App\Service\DataEntityInterface;  
 use App\Service\Hydrator\HydratorInterface;
-use App\Service\Hydrator\MapHydrator;              
+use App\Service\Hydrator\MapHydrator;       
+use App\Utils\Cache as BaseCache;       
 use InvalidArgumentException;
 
 class DataManagerRegistry
@@ -15,11 +16,13 @@ class DataManagerRegistry
     private array $hydrators = [];
     protected SQL $db;
     protected F4 $f3;
+    protected BaseCache $cache;
 
-    public function __construct(SQL $db, F4 $f3)
+    public function __construct(SQL $db, F4 $f3, BaseCache $cache)
     {
         $this->db = $db;
         $this->f3 = $f3;
+        $this->cache = $cache;
     }
 
     public function setHydrator(string $entityClass, HydratorInterface|callable $hydratorOrFactory): void
@@ -68,7 +71,7 @@ class DataManagerRegistry
     {
         if (!isset($this->managers[$className])) {
             $hydrator = $this->getHydrator($className);
-            $this->managers[$className] = new $className($this->db, $this->f3, $hydrator);
+            $this->managers[$className] = new $className($this->db, $this->f3, $hydrator, $this->cache);
         }
 
         return $this->managers[$className];
