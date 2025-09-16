@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Utils;
+namespace App\View;
 
 use App\F4;
 

@@ -16,7 +16,7 @@ function assets(){
     return \App\F4::instance()->getDI(\App\Utils\Assets::class);
 }
 function template(){
-    return \App\F4::instance()->getDI(\App\Utils\Template::class);
+    return \App\F4::instance()->getDI(\App\View\Template::class);
 }
 function app_component(string $componentName, string $componentTemplate, array $arParams = []){
     return app()->component_manager->run($componentName, $componentTemplate, $arParams);

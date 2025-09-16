@@ -1,6 +1,12 @@
 <?php
 namespace App\Utils;
 
+// Класс для обхода файлов и папок с фильтрацией по файлам и папкам
+// Example
+// FileWalker::collect('path/to/folder',
+//      $include = ['rel/include/path1/**'],
+//      $exclude = ['**/exclude.file','*/exlude_for_root.file'],
+//      $excludeFolders = ['rel/exclude_folder/path1']);
 class FileWalker
 {
     public static function collect(
@@ -11,6 +17,9 @@ class FileWalker
     ): array {
         $files = [];
         $dirIt = new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS);
+        self::globPatterns($exclude);
+        self::globPatterns($include);
+        self::globPatterns($excludeFolders);
 
         $filter = new \RecursiveCallbackFilterIterator(
             $dirIt,
@@ -58,11 +67,25 @@ class FileWalker
         return false;
     }
 
+    private static function globPatterns(&$patterns){
+        foreach ($patterns as $key => &$pattern) {
+            $pattern = str_replace('\\', '/', $pattern);
+            $pattern = str_replace(['.','/'], ['\.','\/'], ltrim($pattern, '/'));
+            $ar_replace = [
+                '**' => '\1',
+                '*' => '[^\/]*',
+                '\1' => '.*'
+            ]; // Выделены в последовательную замену, так как друг с другом несовместимы в групповой замене
+            foreach ($ar_replace as $search => $replace) {
+                $pattern = str_replace($search, $replace, $pattern);
+            }
+        }
+    }
+
     private static function matchGlob(string $rel, string $pattern): bool
     {
-        $pattern = str_replace('\\', '/', $pattern);
         $rel = str_replace('\\', '/', $rel);
-        $regex = '/^' . str_replace(['**','*','.','/'], ['.*','[^/]*','\.','\/'], ltrim($pattern, '/')) . '$/u';
+        $regex = '/^' . $pattern . '$/u';
         return (bool)preg_match($regex, $rel);
     }
 }

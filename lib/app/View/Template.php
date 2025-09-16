@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Utils;
+namespace App\View;
 
 use App\F4;
-use App\Utils\Cache;
+use App\View\CacheHelper;
 
 /**
  * Class Template
@@ -15,7 +15,7 @@ class Template
     /** @var array Глобальные параметры шаблона */
     protected array $params = [];
     protected F4 $f3;
-    protected Cache $cache;
+    protected CacheHelper $cache;
     protected array $trigger = [];
     protected int $level = 0;
     protected array $stack = [];
@@ -25,12 +25,11 @@ class Template
      * Конструктор.
      * @param string|string[]|null $uiPaths Путь или массив путей к папке(ам) шаблонов. Как в F4, разделитель — запятая.
      */
-    public function __construct(F4 $f3, Cache $cache, string|array $uiPaths = null)
+    public function __construct(F4 $f3, CacheHelper $cache, string|array $uiPaths = null)
     {
         $this->f3 = $f3;
         $this->cache = $cache;
         if ($uiPaths !== null) {
-            // Приводим к массиву
             $paths = is_array($uiPaths) ? $uiPaths : [$uiPaths];
             $normalized = array_map(fn($p) => rtrim($p, '/\\') . '/', $paths);
             $uiPaths = implode(',', $normalized);
@@ -60,40 +59,33 @@ class Template
      * @param array  $arParams Локальные параметры для данного рендера
      * @return string
      */
-    public function render(string $template, array $arParams = [], $cache_time=0, $mime='text/html'): string
+    public function render(string $template, array $arParams = [], $cache_time = 0, $mime = 'text/html'): string
     {
         $params = $this->params;
         $params['arParams'] = $arParams;
         $fw = $this->f3;
-        $cache = $this->cache;
+
         $file = $this->resolveTemplatePath($template);
 
-        $hash = $fw->hash($file);
-        if ($cache->exists($hash, 'templates', $data))
-            return $data;
-
-        if (is_file($fw->fixslashes($file))) {
+        $producer = function() use ($file, $mime, $params, $fw, $template) {
             if (isset($_COOKIE[session_name()]) &&
                 !headers_sent() && session_status() != PHP_SESSION_ACTIVE)
                 session_start();
+
             $data = $this->sandbox($file, $mime, $params);
 
-            if (!empty($this->trigger['afterrender']['all'])){ // для всех шаблонов
-                foreach($this->trigger['afterrender']['all'] as $func)
+            if (!empty($this->trigger['afterrender']['all'])) {
+                foreach ($this->trigger['afterrender']['all'] as $func)
                     $data = $fw->call($func, [$data, $file]);
             }
-            if (!empty($this->trigger['afterrender'][$template])){ // для текущего шаблона
-                foreach($this->trigger['afterrender'][$template] as $func)
+            if (!empty($this->trigger['afterrender'][$template])) {
+                foreach ($this->trigger['afterrender'][$template] as $func)
                     $data = $fw->call($func, [$data, $file]);
             }
-
-            if ($cache_time)
-                $cache->set($hash, 'templates', $data, $cache_time);
-
             return $data;
-        }
+        };
 
-        user_error(sprintf(\Base::E_Open, $file), E_USER_ERROR);
+        return $this->cache->renderGeneric($template, (int)$cache_time, $producer);
     }
 
     /**
@@ -125,9 +117,7 @@ class Template
             $file = SITE_ROOT . trim($root, '/\\') . '/' . ltrim($template, '/\\');
             if (is_file($file)) {
                 return $file;
-            } else {
-                echo $file;
-            }
+            } 
         }
 
         throw new \RuntimeException("Template not found: {$template}");

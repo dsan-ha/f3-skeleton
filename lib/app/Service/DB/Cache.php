@@ -1,7 +1,7 @@
 <?php
 namespace App\Service\DB;
 
-use App\Utils\Cache;
+use App\Utils\Cache as BaseCache;
 
 /**
  * Обёртка над базовым Cache с поддержкой тэгов и локов.
@@ -12,7 +12,7 @@ final class Cache
     /** Папка/namespace для всего DM-кэша прячем здесь */
     private const FOLDER = 'dm';
 
-    public function __construct(private Cache $base) {}
+    public function __construct(private BaseCache $base) {}
 
     /* ========= БАЗОВЫЕ ОПЕРАЦИИ ========= */
 

@@ -244,8 +244,10 @@ class Router {
     *   @param $die bool
     **/
     function reroute($url=NULL,$permanent=FALSE,$die=TRUE) {
+        $req  = $this->req;
+        $res  = $this->res;
         if (!$url)
-            $url=$this->req->getUri();
+            $url=$req->getUri();
         if (is_array($url))
             $url=call_user_func_array([$this,'alias'],$url);
         elseif (preg_match('/^(?:@([^\/()?#]+)(?:\((.+?)\))*(\?[^#]+)*(#.+)*)/',
@@ -262,17 +264,18 @@ class Router {
         if ($url[0]!='/' && !preg_match('/^\w+:\/\//i',$url))
             $url='/'.$url;
         if ($url[0]=='/' && (empty($url[1]) || $url[1]!='/')) {
-            $port=$this->req->getPort();
+            $port=$req->getPort();
             $port=in_array($port,[80,443])?'':(':'.$port);
-            $url=$this->req->getScheme().'://'.
-                $this->req->getHost().$port.$this->f3->get('BASE').$url;
+            $url=$req->getScheme().'://'.
+                $req->getHost().$port.$this->f3->get('BASE').$url;
         }
         $cli = $this->f3->get('CLI');
         if ($cli)
             $this->mock('GET '.$url.' [cli]');
         else {
             header('Location: '.$url);
-            $this->f3->status($permanent?301:302);
+            $status = $permanent?301:302;
+            $res->withStatus($status)->send();
             if ($die)
                 die;
         }
@@ -425,7 +428,8 @@ class Router {
                         if (isset($mod_since) &&
                             strtotime($mod_since)+
                                 $ttl>$now) {
-                            $f3->status(304);
+                            $status = 304;
+                            $res->withStatus($status)->send();
                             die;
                         }
                         // Retrieve from cache backend

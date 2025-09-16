@@ -39,10 +39,15 @@ return [
         $cache = new App\Utils\Cache($adapter);
         return $cache;
     }),
+    // component cache()
+    App\View\CacheHelper::class => DI\factory(function (F4 $f3) {
+        $cache_folder = SITE_ROOT.ltrim($f3->get('cache.folder','lib/tmp/cache/'),'/');
+        $adapter = new FileCacheAdapter($cache_folder);
+        $cache = new App\View\CacheHelper($adapter);
+        return $cache;
+    }),
     // template()->render()
-    App\Utils\Template::class => create(App\Utils\Template::class)->constructor(get(F4::class),get(App\Utils\Cache::class), $UIpaths),
-    // app()
-    ComponentManager::class => create(ComponentManager::class)->constructor(get(F4::class),get(App\Utils\Assets::class)),
+    App\View\Template::class => create(App\View\Template::class)->constructor(get(F4::class),get(App\View\CacheHelper::class), $UIpaths),
     // app()
     App\App::class => create(App\App::class)->constructor(get(F4::class),get(App\Utils\Assets::class), get(ComponentManager::class))
 ];

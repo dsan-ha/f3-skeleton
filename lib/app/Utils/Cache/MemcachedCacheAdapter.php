@@ -7,52 +7,67 @@ use App\F4;
 class MemcachedCacheAdapter implements CacheInterface
 {
     protected \Memcached $client;
+    protected string $seed;
+    private const META_PREFIX = 'm:';
 
-    public function __construct()
+    public function __construct(string $seed = '')
     {
         $f3 = F4::instance();
         $host = $f3->g('cache.memcached_host','127.0.0.1');
         $port = $f3->g('cache.memcached_port',11211);
         $this->client = new \Memcached();
-        foreach ($servers as $server) {
-            $this->client->addServer($host, $port);
-        }
+        $this->client->addServer($host, $port);
+        $this->seed = $seed?:'';
     }
 
     protected function makeKey(string $key, string $folder): string
     {
-        return preg_replace('/[^a-zA-Z0-9_\-]/', '', str_replace("\\/",'_',$folder)) . '.' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $key);
+        $safeFolder = preg_replace('/[^a-zA-Z0-9_\-]/', '', str_replace("\\/",'_',$folder));
+        $safeKey = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', $key);
+        return $safeFolder . '.' . sha1($this->seed.$safeKey);
     }
 
-    public function set(string $key, string $folder, $value, int $ttl = 0): bool
+    private function pack($value, int $ttl, array $meta): array {
+        $store = ['value'=>$value, 'time'=>microtime(true), 'ttl'=>$ttl];
+        foreach ($meta as $k=>$v) $store[self::META_PREFIX.$k] = $v;
+        return $store;
+    }
+
+    private function unpack($data, &$val, &$meta): bool {
+        if (!is_array($data) || !isset($data['value'],$data['time'],$data['ttl'])) return false;
+        $now = microtime(true);
+        if ($data['ttl'] > 0 && ($data['time'] + $data['ttl']) <= $now) return false;
+        $val = $data['value'];
+        $meta = [];
+        foreach ($data as $k=>$v) {
+            if (strncmp($k, self::META_PREFIX, 2) === 0) $meta[substr($k,2)] = $v;
+        }
+        return true;
+    }
+
+    public function set(string $key, string $folder, $value, int $ttl = 0, array $meta = []): bool
     {
-        $data = [
-            'value' => $value,
-            'time' => microtime(true),
-            'ttl' => $ttl
-        ];
-        return $this->client->set($this->makeKey($key, $folder), $data, $ttl);
+        $k = $this->makeKey($key, $folder);
+        $data = $this->pack($value, $ttl, $meta);
+        return $this->client->set($k, $data, $ttl);
     }
 
     public function exists(string $key, string $folder, &$value = null): bool
     {
-        $data = $this->client->get($this->makeKey($key, $folder));
-        if (!is_array($data) || !isset($data['value'], $data['time'], $data['ttl'])) {
+        $k = $this->makeKey($key, $folder);
+        $data = $this->client->get($k);
+
+        if (!$this->unpack($data, $val, $meta)) {
+            $this->clear($key, $folder);
             return false;
         }
-
-        if ($data['ttl'] === 0 || $data['time'] + $data['ttl'] > microtime(true)) {
-            $value = $data['value'];
-            return true;
-        }
-
-        $this->clear($key, $folder);
-        return false;
+        $value = [$val, $meta];
+        return true;
     }
 
     public function get(string $key, string $folder, $def = null)
     {
-        return $this->exists($key, $folder, $value) ? $value : $def;
+        return $this->exists($key, $folder, $value) ? $value : [$def,[]];
     }
 
     public function clear(string $key, string $folder): bool

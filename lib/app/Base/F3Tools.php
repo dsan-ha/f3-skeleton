@@ -122,7 +122,7 @@ trait F3Tools {
 
     function cache_exists(string $key, &$value = null)
     {
-        $this->cache->exists($key, self::Cache_folder, $value);
+        return $this->cache->exists($key, self::Cache_folder, $value);
     }
 
     function cache_set(string $key, $value, int $ttl = 0)
@@ -786,14 +786,6 @@ trait F3Tools {
         return $out;
     }
 
-    function error_min($code,$text='',?array $trace=NULL,$level=0) {
-        $header = @constant('self::HTTP_'.$code);
-        http_response_code($code);
-        header('Content-Type: application/json');
-        echo json_encode(['error' => $header, 'code' => $code,'text' => $text,'trace'=>$this->hive['DEBUG']?$this->trace($trace):''], JSON_UNESCAPED_UNICODE);
-        die();
-    }
-
     /**
     *   Log error; Execute ONERROR handler if defined, else display
     *   default error page (HTML for synchronous requests, JSON string
@@ -1267,7 +1259,7 @@ trait F3Tools {
         );
         
         // Снимок окружения и нормализация
-        Environment::init(function (Environment $env) {
+        $env = Environment::init(function (Environment $env) {
             // Тут же можно задать доверенные прокси/хосты:
             /*$env->setTrustedProxies(['127.0.0.1','10.0.0.0/8'])
                 ->setTrustedHosts(['^oasis\\.local$', '^md\\.local$'])
@@ -1277,8 +1269,7 @@ trait F3Tools {
         $cli = PHP_SAPI=='cli';
         $base='/';
         if (!$cli)
-            $base=rtrim($this->fixslashes(
-                dirname($_SERVER['SCRIPT_NAME'])),'/');
+            $base=$env->base();
 
         // Default configuration
         $this->hive=[

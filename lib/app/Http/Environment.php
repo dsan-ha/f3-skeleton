@@ -10,7 +10,7 @@ namespace App\Http;
  * USE:
  *   Environment::init(function(Environment $env) {
  *       $env->setTrustedProxies(['127.0.0.1','10.0.0.0/8'])
- *           ->setTrustedHosts(['^oasis\\.local$']);
+ *           ->setTrustedHosts(['^fff\\.local$']);
  *   });
  *   $req = Environment::instance()->getRequest();
  */

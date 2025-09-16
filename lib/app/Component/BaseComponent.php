@@ -1,5 +1,4 @@
 <?php
-// App/Component/BaseComponent.php
 
 namespace App\Component;
 
@@ -47,14 +46,18 @@ abstract class BaseComponent {
             if (is_array($raw)) {
                 foreach ($raw as $key => $meta) {
                     if (is_array($meta) && array_key_exists('def', $meta)) {
-                        $arParams[$key] = $params_format?$meta['def']:$meta;
+                        $arParams[$key] = $params_format ? $meta['def'] : $meta;
                     }
                 }
             }
         }
         
-        if(method_exists($this,'prepareDefaults') && $params_format)
-            $arParams = $this->prepareDefaults($params);
+        if (method_exists($this,'prepareDefaults') && $params_format) {
+            $arParams = $this->prepareDefaults($arParams);
+        }
+
+        if (!isset($arParams['CACHE_TYPE'])) $arParams['CACHE_TYPE'] = 'N'; // N|A|Y
+        if (!isset($arParams['CACHE_TIME'])) $arParams['CACHE_TIME'] = 0;   // сек
 
         return $arParams;
     }
@@ -74,7 +77,17 @@ abstract class BaseComponent {
         $template->set('templateName',$this->templateName);
         $template->set('component',$this);
         $this->includeStyleScript();
-        return $template->render($templatePath, $arParams);
+
+        $helper = $this->f3->getDI(\App\View\CacheHelper::class) ?? null;
+
+        $renderer = function() use ($template, $templatePath, $arParams) {
+            return $template->render($templatePath, $arParams);
+        };
+        if ($helper instanceof \App\View\CacheHelper) {
+            return $helper->renderWithCache($this, $arParams, $renderer);
+        }
+
+        return $renderer();
     }
 
     protected function getUIPath($path, bool $uri = false){
@@ -90,4 +103,7 @@ abstract class BaseComponent {
         }
         return '';
     }
+
+    public function getTemplateName(): string { return $this->templateName; }
+    public function getTemplateFolder(): string { return $this->folder; }
 }

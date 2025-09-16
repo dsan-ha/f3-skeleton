@@ -15,25 +15,30 @@ class Cache implements CacheInterface
         $this->adapter = $adapter;
     }
 
-    public function add(string $key, $value, int $ttl = 30): bool {
-        if ($this->has($key)) return false;
-        $this->set($key, '', $value, $ttl);
+    public function add(string $key, $value, int $ttl = 30, array $meta = []): bool {
+        $folder = '';
+        if ($this->exists($key, $folder, $tmp)) return false;
+        $this->set($key, $folder, $value, $ttl);
         return true;
     }
 
-    public function set(string $key, string $folder, $value, int $ttl = 0): bool
+    public function set(string $key, string $folder, $value, int $ttl = 0, $meta = []): bool
     {
-        return $this->adapter->set($key, $folder, $value, $ttl);
+        return $this->adapter->set($key, $folder, $value, $ttl, $meta);
     }
 
     public function get(string $key, string $folder, $def = null)
     {
-        return $this->adapter->get($key, $folder, $def);
+        $arValue = $this->adapter->get($key, $folder, $def);
+        return $arValue[0];
     }
 
     public function exists(string $key, string $folder, &$value = null): bool
     {
-        return $this->adapter->exists($key, $folder, $value);
+        $arValue = [];
+        $ok = $this->adapter->exists($key, $folder, $arValue);
+        if(is_array($arValue) && count($arValue) == 2) $value = $arValue[0];
+        return $ok;
     }
 
     public function clear(string $key, string $folder): bool
